@@ -1,0 +1,11 @@
+{
+  "name": "@companion-runtime/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "../../dist/apps/desktop/src/main.js",
+  "scripts": {
+    "build": "npm --prefix ../.. run build",
+    "start": "npm run build --silent && ../../node_modules/.bin/electron ../../dist/apps/desktop/src/main.js"
+  }
+}

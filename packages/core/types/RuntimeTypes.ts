@@ -4,6 +4,8 @@ import type { BehaviorSlot } from "./BehaviorSlot.js";
 import type { PetAction } from "./PetAction.js";
 import type { CharacterManifest } from "./CharacterManifest.js";
 import type { UserProfileRuntimeConfiguration } from "../profile/UserProfile.js";
+import type { ProfileManager } from "../profile/ProfileManager.js";
+import type { ActionResolver } from "../behavior/ActionResolver.js";
 
 export type JsonUrl = string | URL;
 
@@ -49,19 +51,12 @@ export interface BehaviorResolverLike {
   supports(eventType: string, name?: string): boolean;
 }
 
-export interface PetManagerCreateOptions {
-  manifestUrl?: JsonUrl;
-  configUrl?: JsonUrl;
-  behaviorMappingUrl?: JsonUrl;
-  profileUrl?: JsonUrl;
-  container?: HTMLElement;
-}
-
 export interface PetManagerOptions {
-  manifest: PetManifest;
   characterDefinitions: PetCharacterDefinition[];
   behaviorMapping: BehaviorActionMapping;
+  actionResolver: ActionResolver;
   userProfile: UserProfileRuntimeConfiguration;
+  profileManager: ProfileManager;
   runtimeConfig?: RuntimeConfig;
   assetBaseUrl: string;
   container?: HTMLElement;

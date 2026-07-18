@@ -1,0 +1,69 @@
+:root {
+  color-scheme: dark;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: transparent;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+.desktop-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgb(18 23 34 / 16%), rgb(18 23 34 / 5%));
+}
+
+.drag-region {
+  -webkit-app-region: drag;
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 10px;
+  color: rgb(255 255 255 / 72%);
+  font-size: 10px;
+  letter-spacing: .04em;
+}
+
+#runtime-status {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#pet-stage .ninja-pet {
+  right: 76px;
+  bottom: 64px;
+}
+
+.event-controls {
+  -webkit-app-region: no-drag;
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  left: 8px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+}
+
+.event-controls button {
+  min-height: 30px;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 9px;
+  color: white;
+  background: rgb(15 23 42 / 70%);
+  font: inherit;
+  cursor: pointer;
+}
+
+.event-controls button:hover {
+  background: rgb(30 41 59 / 86%);
+}

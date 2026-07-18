@@ -1,7 +1,5 @@
-import { PetManager } from "../../packages/core/runtime/PetManager.js";
-import { PetEventAdapter } from "../../packages/core/runtime/PetEventAdapter.js";
-import { PetBehaviorEngine } from "../../packages/core/runtime/PetBehaviorEngine.js";
-import { PetPersonalityEngine } from "../../packages/core/runtime/PetPersonalityEngine.js";
+import { createCompanionRuntime } from "../../packages/core/bootstrap/createCompanionRuntime.js";
+import { JsonProfileStore } from "../../packages/core/profile/storage/JsonProfileStore.js";
 
 const manifestUrl = new URL("../../packages/core/config/pet-manifest.json", import.meta.url);
 const configUrl = new URL("../../packages/core/config/runtime-config.json", import.meta.url);
@@ -11,21 +9,63 @@ const profileUrl = new URL("../../packages/core/config/user-profile.json", impor
 const behaviorRulesUrl = new URL("../../packages/core/config/behavior-rules.json", import.meta.url);
 const personalityProfilesUrl = new URL("../../packages/core/config/personality-profiles.json", import.meta.url);
 
-const manager = await PetManager.create({ manifestUrl, configUrl, behaviorMappingUrl, profileUrl });
-await manager.ready;
-const eventAdapter = await PetEventAdapter.create({ petManager: manager, mappingUrl: eventMappingUrl });
-const personalityEngine = await PetPersonalityEngine.create({ profilesUrl: personalityProfilesUrl });
-const behaviorEngine = await PetBehaviorEngine.create({
-  petManager: manager,
-  rulesUrl: behaviorRulesUrl,
-  behaviorResolver: eventAdapter.behaviorResolver,
-  personalityEngine
+async function fetchJson(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Unable to load ${url}: HTTP ${response.status}`);
+  return response.json();
+}
+
+const [petManifest, runtimeConfig, eventMapping, behaviorMapping, behaviorRules, personalityProfiles] =
+  await Promise.all([
+    fetchJson(manifestUrl),
+    fetchJson(configUrl),
+    fetchJson(eventMappingUrl),
+    fetchJson(behaviorMappingUrl),
+    fetchJson(behaviorRulesUrl),
+    fetchJson(personalityProfilesUrl)
+  ]);
+const assetBaseUrl = new URL(petManifest.assetBase, manifestUrl).href.replace(/\/$/, "");
+const characters = await Promise.all(
+  Object.entries(petManifest.characters).map(async ([characterId, path]) => {
+    const character = await fetchJson(new URL(path, `${assetBaseUrl}/`));
+    if (character.id !== characterId) throw new Error(`Character id mismatch: ${characterId}`);
+    return character;
+  })
+);
+const characterRegistry = {
+  getCharacter(id) {
+    return characters.find((character) => character.id === id);
+  },
+  listCharacters() {
+    return [...characters];
+  }
+};
+const profileStore = new JsonProfileStore(profileUrl);
+const context = await createCompanionRuntime({
+  profileId: "default",
+  profileStore,
+  characterRegistry,
+  assetBaseUrl,
+  eventMapping,
+  behaviorMapping,
+  behaviorRules,
+  runtimeConfig,
+  personalityProfiles
 });
-behaviorEngine.start();
+const {
+  petManager: manager,
+  behaviorEngine,
+  eventNormalizer,
+  runtime
+} = context;
+await manager.ready;
+const personalityEngine = behaviorEngine.personalityEngine;
+if (!personalityEngine) throw new Error("Browser Demo requires personality profiles");
+runtime.start();
 window.petManager = manager;
-window.petEventAdapter = eventAdapter;
 window.petBehaviorEngine = behaviorEngine;
 window.petPersonalityEngine = personalityEngine;
+window.companionRuntime = context;
 
 const characterSelect = document.querySelector("#character");
 const stateSelect = document.querySelector("#state");
@@ -46,13 +86,11 @@ for (const slot of manager.listBehaviorSlots()) {
 }
 
 function createEvent(type, source) {
-  return {
-    id: crypto.randomUUID(),
-    type,
+  return eventNormalizer.normalize({
+    event: type,
     source: { app: "browser-demo", collector: source },
-    payload: {},
-    timestamp: Date.now()
-  };
+    payload: {}
+  });
 }
 
 function refreshActions() {
@@ -125,7 +163,7 @@ document.querySelector("#hide").addEventListener("click", () => manager.hidePet(
 for (const button of document.querySelectorAll("[data-pet-event]")) {
   button.addEventListener("click", async () => {
     const event = button.dataset.petEvent;
-    await eventAdapter.handle(createEvent(event, "event-adapter-demo"));
+    await runtime.publish(createEvent(event, "event-adapter-demo"));
     syncControls();
     const actionId = manager.viewer.element.dataset.action ?? manager.resolveAction(manager.stateMachine.state).id;
     status.textContent = `${event} → ${manager.character.name} / ${manager.stateMachine.state} / ${actionId}`;

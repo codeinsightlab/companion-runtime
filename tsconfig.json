@@ -13,7 +13,10 @@
     "skipLibCheck": false
   },
   "include": [
+    "apps/desktop/src/**/*",
     "packages/collectors/**/*.ts",
+    "packages/listeners/**/*.ts",
+    "packages/core/bootstrap/**/*.ts",
     "packages/core/behavior/**/*.ts",
     "packages/core/events/**/*.ts",
     "packages/core/profile/**/*.ts",

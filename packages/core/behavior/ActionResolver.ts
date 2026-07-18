@@ -7,13 +7,17 @@ export type BehaviorActionOverrides = Readonly<Partial<Record<BehaviorSlot, stri
 
 export class ActionResolver {
   readonly #defaultMapping: BehaviorActionMapping;
-  readonly #userMapping: BehaviorActionOverrides;
+  #userMapping: BehaviorActionOverrides;
 
   constructor(mapping: BehaviorActionMapping, userMapping: BehaviorActionOverrides = {}) {
     if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) {
       throw new TypeError("ActionResolver requires a behavior mapping object");
     }
     this.#defaultMapping = Object.freeze({ ...mapping });
+    this.#userMapping = Object.freeze({ ...userMapping });
+  }
+
+  setUserMapping(userMapping: BehaviorActionOverrides): void {
     this.#userMapping = Object.freeze({ ...userMapping });
   }
 

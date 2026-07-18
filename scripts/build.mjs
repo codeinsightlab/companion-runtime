@@ -23,3 +23,12 @@ cpSync(
 );
 cpSync(resolve(projectRoot, "characters"), resolve(outputDirectory, "characters"), { recursive: true });
 cpSync(resolve(projectRoot, "examples"), resolve(outputDirectory, "examples"), { recursive: true });
+mkdirSync(resolve(outputDirectory, "apps/desktop"), { recursive: true });
+cpSync(
+  resolve(projectRoot, "apps/desktop/index.html"),
+  resolve(outputDirectory, "apps/desktop/index.html")
+);
+cpSync(
+  resolve(projectRoot, "apps/desktop/desktop.css"),
+  resolve(outputDirectory, "apps/desktop/desktop.css")
+);
