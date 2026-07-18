@@ -1,0 +1,21 @@
+{
+  "id": "sasuke",
+  "name": "宇智波佐助",
+  "version": "1.0.0",
+  "actions": ["idle", "thinking", "working", "celebrate", "danger", "focus"],
+  "behaviorMapping": {
+    "IDLE": "idle",
+    "THINKING": "thinking",
+    "EXECUTING": "working",
+    "SUCCESS": "celebrate",
+    "ERROR": "danger"
+  },
+  "assets": {
+    "idle": { "asset": "idle.png" },
+    "thinking": { "asset": "sharingan.png" },
+    "working": { "asset": "chidori.png" },
+    "celebrate": { "asset": "susanoo.png" },
+    "danger": { "asset": "sword-mode.png" },
+    "focus": { "asset": "code-focus.png" }
+  }
+}

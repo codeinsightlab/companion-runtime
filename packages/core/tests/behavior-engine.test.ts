@@ -1,28 +1,39 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { PetBehaviorEngine } from "../runtime/PetBehaviorEngine.js";
+import { BehaviorResolver } from "../behavior/BehaviorResolver.js";
 import { BehaviorScheduler } from "../runtime/BehaviorScheduler.js";
-import type { PetState } from "../types/PetState.js";
+import { PetBehaviorEngine } from "../runtime/PetBehaviorEngine.js";
+import type { CompanionEvent } from "../events/CompanionEvent.js";
+import type { BehaviorSlot } from "../types/BehaviorSlot.js";
+import type { PetAction } from "../types/PetAction.js";
 import type {
   BehaviorRulesConfig,
+  EventMapping,
   PetCharacterLike,
   PetManagerLike
 } from "../types/RuntimeTypes.js";
+
+const eventMapping = {
+  TASK_START: "THINKING",
+  TASK_RUNNING: "EXECUTING",
+  TASK_SUCCESS: "SUCCESS",
+  TASK_ERROR: "ERROR",
+  IDLE: "IDLE"
+} satisfies EventMapping;
 
 const rules = {
   priorities: {
     IDLE: 0,
     THINKING: 20,
     EXECUTING: 40,
-    REVIEWING: 60,
     SUCCESS: 80,
     ERROR: 100
   },
   events: {
-    task_start: { state: "THINKING" },
-    task_running: { state: "EXECUTING" },
-    task_success: { state: "SUCCESS", duration: 3000, recover: "IDLE" },
-    task_error: { character: "itachi", state: "ERROR", duration: 5000, recover: "IDLE" }
+    TASK_START: {},
+    TASK_RUNNING: {},
+    TASK_SUCCESS: { duration: 3000, recover: "IDLE" },
+    TASK_ERROR: { duration: 5000, recover: "IDLE" }
   },
   cooldown: {
     SUCCESS: 5000
@@ -31,6 +42,16 @@ const rules = {
     enabled: false
   }
 } satisfies BehaviorRulesConfig;
+
+function companionEvent(type: CompanionEvent["type"]): CompanionEvent {
+  return {
+    id: `event-${type}`,
+    type,
+    source: { app: "test" },
+    payload: {},
+    timestamp: 1
+  };
+}
 
 function createTimerHarness(): {
   scheduler: BehaviorScheduler;
@@ -68,18 +89,24 @@ interface TestManager extends PetManagerLike {
 }
 
 function createManager(): TestManager {
-  const actionsByState: Record<PetState, string> = {
+  const actionsBySlot: Record<BehaviorSlot, string> = {
     IDLE: "idle",
-    THINKING: "sharingan",
-    EXECUTING: "chidori",
-    REVIEWING: "code-review",
-    SUCCESS: "susanoo",
-    ERROR: "crow-dissolve"
+    THINKING: "thinking",
+    EXECUTING: "working",
+    SUCCESS: "celebrate",
+    ERROR: "danger"
   };
+  const actionFor = (characterId: string, actionId: string): PetAction => ({
+    id: actionId,
+    asset: `${actionId}.asset`,
+    characterId,
+    assetBase: "/assets",
+    src: `/assets/${characterId}/${actionId}.asset`
+  });
   const characterFor = (characterId: string): PetCharacterLike => ({
     id: characterId,
-    actionForState(state) {
-      return { id: actionsByState[state] ?? "idle" };
+    getAction(actionId) {
+      return actionFor(characterId, actionId);
     }
   });
   return {
@@ -90,22 +117,34 @@ function createManager(): TestManager {
       this.character = characterFor(characterId);
       this.calls.push(["character", characterId]);
     },
-    async changeState(state) {
-      this.stateMachine.state = state;
-      this.calls.push(["state", state]);
+    async changeBehavior(slot) {
+      this.stateMachine.state = slot;
+      this.calls.push(["behavior", slot]);
     },
-    async changeAction(action) {
-      this.calls.push(["action", action]);
+    async changeAction(actionId) {
+      this.calls.push(["action", actionId]);
+    },
+    resolveAction(slot) {
+      return this.character.getAction(actionsBySlot[slot]);
     }
   };
+}
+
+function createEngine(manager: TestManager, scheduler: BehaviorScheduler): PetBehaviorEngine {
+  return new PetBehaviorEngine({
+    petManager: manager,
+    rules,
+    behaviorResolver: new BehaviorResolver(eventMapping),
+    scheduler
+  });
 }
 
 test("SUCCESS enters success and recovers to IDLE after duration", async () => {
   const manager = createManager();
   const timers = createTimerHarness();
-  const engine = new PetBehaviorEngine({ petManager: manager, rules, scheduler: timers.scheduler });
+  const engine = createEngine(manager, timers.scheduler);
 
-  const result = await engine.handleEvent({ event: "task_success" });
+  const result = await engine.handleEvent(companionEvent("TASK_SUCCESS"));
   assert.equal(result.accepted, true);
   assert.equal(manager.stateMachine.state, "SUCCESS");
 
@@ -114,47 +153,47 @@ test("SUCCESS enters success and recovers to IDLE after duration", async () => {
 
   await timers.tick(1);
   assert.equal(manager.stateMachine.state, "IDLE");
-  assert.equal(engine.getCurrentBehavior().recoveredFrom, "task_success");
+  assert.equal(engine.getCurrentBehavior().recoveredFrom, "TASK_SUCCESS");
 });
 
-test("ERROR interrupts EXECUTING and switches to Itachi", async () => {
+test("ERROR interrupts EXECUTING without changing character", async () => {
   const manager = createManager();
   const timers = createTimerHarness();
-  const engine = new PetBehaviorEngine({ petManager: manager, rules, scheduler: timers.scheduler });
+  const engine = createEngine(manager, timers.scheduler);
 
-  await engine.handleEvent({ event: "task_running" });
-  assert.equal(manager.stateMachine.state, "EXECUTING");
+  await engine.handleEvent(companionEvent("TASK_RUNNING"));
+  const result = await engine.handleEvent(companionEvent("TASK_ERROR"));
 
-  const result = await engine.handleEvent({ event: "task_error" });
   assert.equal(result.accepted, true);
-  assert.equal(manager.character.id, "itachi");
+  assert.equal(manager.character.id, "sasuke");
   assert.equal(manager.stateMachine.state, "ERROR");
+  assert.equal(manager.calls.some(([kind]) => kind === "character"), false);
 });
 
 test("SUCCESS cooldown blocks repeated success events", async () => {
   const manager = createManager();
   const timers = createTimerHarness();
-  const engine = new PetBehaviorEngine({ petManager: manager, rules, scheduler: timers.scheduler });
+  const engine = createEngine(manager, timers.scheduler);
 
-  await engine.handleEvent({ event: "task_success" });
-  const result = await engine.handleEvent({ event: "task_success" });
+  await engine.handleEvent(companionEvent("TASK_SUCCESS"));
+  const result = await engine.handleEvent(companionEvent("TASK_SUCCESS"));
 
   assert.equal(result.accepted, false);
   assert.equal(result.accepted ? undefined : result.reason, "cooldown");
 });
 
-test("priority order keeps lower-priority EXECUTING from interrupting SUCCESS but allows ERROR", async () => {
+test("priority keeps EXECUTING from interrupting SUCCESS but allows ERROR", async () => {
   const manager = createManager();
   const timers = createTimerHarness();
-  const engine = new PetBehaviorEngine({ petManager: manager, rules, scheduler: timers.scheduler });
+  const engine = createEngine(manager, timers.scheduler);
 
-  await engine.handleEvent({ event: "task_success" });
-  const lower = await engine.handleEvent({ event: "task_running" });
+  await engine.handleEvent(companionEvent("TASK_SUCCESS"));
+  const lower = await engine.handleEvent(companionEvent("TASK_RUNNING"));
   assert.equal(lower.accepted, false);
   assert.equal(lower.accepted ? undefined : lower.reason, "priority");
   assert.equal(manager.stateMachine.state, "SUCCESS");
 
-  const higher = await engine.handleEvent({ event: "task_error" });
+  const higher = await engine.handleEvent(companionEvent("TASK_ERROR"));
   assert.equal(higher.accepted, true);
   assert.equal(manager.stateMachine.state, "ERROR");
 });

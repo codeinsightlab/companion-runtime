@@ -1,9 +1,12 @@
+import { ActionResolver } from "../behavior/ActionResolver.js";
 import { PetCharacter } from "./PetCharacter.js";
-import { PET_STATES, PetStateMachine } from "./PetStateMachine.js";
+import { BEHAVIOR_SLOTS, PetStateMachine } from "./PetStateMachine.js";
 import { PetViewer } from "./PetViewer.js";
+import { UserProfileResolver } from "../profile/UserProfileResolver.js";
 import type { CharacterProfile } from "../types/CharacterProfile.js";
-import type { PetState } from "../types/PetState.js";
+import type { BehaviorSlot } from "../types/BehaviorSlot.js";
 import type {
+  BehaviorActionMapping,
   JsonUrl,
   PetManagerCreateOptions,
   PetManagerOptions,
@@ -11,10 +14,14 @@ import type {
   PetPosition,
   RuntimeConfig
 } from "../types/RuntimeTypes.js";
+import type { CharacterManifest } from "../types/CharacterManifest.js";
+import type { UserProfile, UserProfileRuntimeConfiguration } from "../profile/UserProfile.js";
 
 export class PetManager extends EventTarget {
   readonly manifest: PetManifest;
   readonly characters: ReadonlyMap<string, PetCharacter>;
+  readonly actionResolver: ActionResolver;
+  readonly userProfile: UserProfileRuntimeConfiguration;
   character: PetCharacter;
   readonly stateMachine: PetStateMachine;
   readonly viewer: PetViewer;
@@ -23,48 +30,87 @@ export class PetManager extends EventTarget {
   static async create({
     manifestUrl,
     configUrl,
+    behaviorMappingUrl,
+    profileUrl,
     container
   }: PetManagerCreateOptions = {}): Promise<PetManager> {
     if (!manifestUrl) throw new TypeError("PetManager.create requires manifestUrl");
+    if (!behaviorMappingUrl) throw new TypeError("PetManager.create requires behaviorMappingUrl");
+    if (!profileUrl) throw new TypeError("PetManager.create requires profileUrl");
 
-    const [manifest, runtimeConfig] = await Promise.all([
+    const [manifest, runtimeConfig, behaviorMapping, userProfile] = await Promise.all([
       PetManager.#fetchJson<PetManifest>(manifestUrl),
       configUrl
         ? PetManager.#fetchJson<RuntimeConfig>(configUrl)
-        : Promise.resolve({} as RuntimeConfig)
+        : Promise.resolve({} as RuntimeConfig),
+      PetManager.#fetchJson<BehaviorActionMapping>(behaviorMappingUrl),
+      PetManager.#fetchJson<UserProfile>(profileUrl)
     ]);
-
     const assetBaseUrl = new URL(manifest.assetBase, manifestUrl).href.replace(/\/$/, "");
-    return new PetManager({ manifest, runtimeConfig, assetBaseUrl, container });
+    const characterDefinitions = await Promise.all(
+      Object.entries(manifest.characters).map(async ([characterId, configPath]) => {
+        const definition = await PetManager.#fetchJson<CharacterManifest>(
+          new URL(configPath, `${assetBaseUrl}/`)
+        );
+        if (definition.id !== characterId) {
+          throw new TypeError(
+            `Character config id "${definition.id}" does not match manifest id "${characterId}"`
+          );
+        }
+        return { ...definition, assetBase: assetBaseUrl };
+      })
+    );
+    const selectedDefinition = characterDefinitions.find(
+      (definition) => definition.id === userProfile.characterId
+    );
+    if (!selectedDefinition) {
+      throw new RangeError(`Unknown UserProfile character "${userProfile.characterId}"`);
+    }
+    const resolvedProfile = new UserProfileResolver().resolve(userProfile, selectedDefinition);
+
+    return new PetManager({
+      manifest,
+      characterDefinitions,
+      behaviorMapping,
+      userProfile: resolvedProfile,
+      runtimeConfig,
+      assetBaseUrl,
+      container
+    });
   }
 
   constructor({
     manifest,
+    characterDefinitions,
+    behaviorMapping,
+    userProfile,
     runtimeConfig = {},
     assetBaseUrl,
     container
   }: PetManagerOptions) {
     super();
     this.manifest = manifest;
+    this.userProfile = userProfile;
     this.characters = new Map(
-      Object.entries(manifest.characters).map(([id, definition]) => [
-        id,
-        new PetCharacter({ id, ...definition, assetBase: assetBaseUrl })
+      characterDefinitions.map((definition) => [
+        definition.id,
+        new PetCharacter({ ...definition, assetBase: assetBaseUrl })
       ])
     );
+    this.actionResolver = new ActionResolver(behaviorMapping, userProfile.behaviorMapping);
 
-    const characterId = runtimeConfig.character ?? manifest.defaultCharacter;
-    const state = runtimeConfig.state ?? manifest.defaultState ?? "IDLE";
+    const characterId = userProfile.characterId;
+    const behavior = runtimeConfig.behavior ?? manifest.defaultBehavior ?? "IDLE";
     this.character = this.#getCharacter(characterId);
-    this.stateMachine = new PetStateMachine(state);
+    this.stateMachine = new PetStateMachine(behavior);
     this.viewer = new PetViewer({
       container,
       position: runtimeConfig.position ?? "bottom-right",
       size: runtimeConfig.size ?? 128
     });
 
-    this.stateMachine.addEventListener("change", () => this.#renderState());
-    this.ready = this.#renderState();
+    this.stateMachine.addEventListener("change", () => this.#renderBehavior());
+    this.ready = this.#renderBehavior();
     if (runtimeConfig.enabled !== false) this.showPet();
   }
 
@@ -78,14 +124,18 @@ export class PetManager extends EventTarget {
 
   async changeCharacter(characterId: string): Promise<void> {
     this.character = this.#getCharacter(characterId);
-    await this.#renderState();
+    await this.#renderBehavior();
     this.dispatchEvent(new CustomEvent("characterchange", { detail: { character: this.character } }));
   }
 
-  changeState(state: PetState): Promise<void> {
-    const changed = this.stateMachine.transition(state, { characterId: this.character.id });
-    if (!changed) return this.#renderState();
+  changeBehavior(slot: BehaviorSlot): Promise<void> {
+    const changed = this.stateMachine.transition(slot, { characterId: this.character.id });
+    if (!changed) return this.#renderBehavior();
     return this.ready;
+  }
+
+  resolveAction(slot: BehaviorSlot) {
+    return this.actionResolver.resolve(this.character, slot);
   }
 
   async changeAction(actionId: string): Promise<void> {
@@ -106,8 +156,8 @@ export class PetManager extends EventTarget {
     return [...this.characters.values()].map(({ id, name }) => ({ id, name }));
   }
 
-  listStates(): PetState[] {
-    return [...PET_STATES];
+  listBehaviorSlots(): BehaviorSlot[] {
+    return [...BEHAVIOR_SLOTS];
   }
 
   destroy(): void {
@@ -120,8 +170,8 @@ export class PetManager extends EventTarget {
     return character;
   }
 
-  #renderState(): Promise<void> {
-    const action = this.character.actionForState(this.stateMachine.state);
+  #renderBehavior(): Promise<void> {
+    const action = this.resolveAction(this.stateMachine.state);
     this.ready = this.viewer.display(action, this.character.name);
     return this.ready;
   }

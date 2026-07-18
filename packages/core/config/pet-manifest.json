@@ -1,66 +1,11 @@
 {
-  "version": 1,
+  "version": 2,
   "assetBase": "../../../characters/naruto-pack",
   "defaultCharacter": "sasuke",
-  "defaultState": "IDLE",
+  "defaultBehavior": "IDLE",
   "characters": {
-    "sasuke": {
-      "name": "宇智波佐助",
-      "actions": {
-        "idle": "idle.png",
-        "sharingan": "sharingan.png",
-        "chidori": "chidori.png",
-        "susanoo": "susanoo.png",
-        "sword-mode": "sword-mode.png",
-        "code-focus": "code-focus.png"
-      },
-      "states": {
-        "IDLE": "idle",
-        "THINKING": "sharingan",
-        "EXECUTING": "chidori",
-        "REVIEWING": "code-focus",
-        "SUCCESS": "susanoo",
-        "ERROR": "sword-mode"
-      }
-    },
-    "naruto": {
-      "name": "漩涡鸣人",
-      "actions": {
-        "idle": "idle.png",
-        "sage-mode": "sage-mode.png",
-        "rasenshuriken": "rasenshuriken.png",
-        "big-rasengan": "big-rasengan.png",
-        "shadow-clone": "shadow-clone.png",
-        "code-focus": "code-focus.png"
-      },
-      "states": {
-        "IDLE": "idle",
-        "THINKING": "sage-mode",
-        "EXECUTING": "rasenshuriken",
-        "REVIEWING": "code-focus",
-        "SUCCESS": "big-rasengan",
-        "ERROR": "shadow-clone"
-      }
-    },
-    "itachi": {
-      "name": "宇智波鼬",
-      "actions": {
-        "idle": "idle.png",
-        "sharingan": "sharingan.png",
-        "susanoo": "susanoo.png",
-        "crow-dissolve": "crow-dissolve.png",
-        "crow-appear": "crow-appear.png",
-        "fireball": "fireball.png",
-        "code-review": "code-review.png"
-      },
-      "states": {
-        "IDLE": "idle",
-        "THINKING": "sharingan",
-        "EXECUTING": "fireball",
-        "REVIEWING": "code-review",
-        "SUCCESS": "susanoo",
-        "ERROR": "crow-dissolve"
-      }
-    }
+    "sasuke": "sasuke/character.json",
+    "naruto": "naruto/character.json",
+    "itachi": "itachi/character.json"
   }
 }

@@ -1,5 +1,9 @@
-import type { EventType } from "./EventType.js";
-import type { PetState } from "./PetState.js";
+import type { CompanionEvent } from "../events/CompanionEvent.js";
+import type { EventType } from "../events/EventType.js";
+import type { BehaviorSlot } from "./BehaviorSlot.js";
+import type { PetAction } from "./PetAction.js";
+import type { CharacterManifest } from "./CharacterManifest.js";
+import type { UserProfileRuntimeConfiguration } from "../profile/UserProfile.js";
 
 export type JsonUrl = string | URL;
 
@@ -7,37 +11,26 @@ export type PetPosition = "bottom-right" | "bottom-left" | "top-right" | "top-le
 
 export interface PetActionDefinition {
   id: string;
-  file: string;
+  asset: string;
   characterId: string;
   assetBase: string;
 }
 
-export interface PetCharacterDefinition {
-  id: string;
-  name: string;
-  actions: Record<string, string>;
-  states?: Partial<Record<PetState, string>>;
+export interface PetCharacterDefinition extends CharacterManifest {
   assetBase: string;
-}
-
-export interface PetManifestCharacterDefinition {
-  name: string;
-  actions: Record<string, string>;
-  states?: Partial<Record<PetState, string>>;
 }
 
 export interface PetManifest {
   version: number;
   assetBase: string;
   defaultCharacter: string;
-  defaultState?: PetState;
-  characters: Record<string, PetManifestCharacterDefinition>;
+  defaultBehavior?: BehaviorSlot;
+  characters: Record<string, string>;
 }
 
 export interface RuntimeConfig {
   enabled?: boolean;
-  character?: string;
-  state?: PetState;
+  behavior?: BehaviorSlot;
   position?: PetPosition;
   size?: number;
 }
@@ -48,30 +41,31 @@ export interface PetViewerOptions {
   size?: number;
 }
 
+export type EventMapping = Record<string, BehaviorSlot>;
+export type BehaviorActionMapping = Partial<Record<BehaviorSlot, string>>;
+
+export interface BehaviorResolverLike {
+  resolve(event: CompanionEvent): BehaviorSlot;
+  supports(eventType: string, name?: string): boolean;
+}
+
 export interface PetManagerCreateOptions {
   manifestUrl?: JsonUrl;
   configUrl?: JsonUrl;
+  behaviorMappingUrl?: JsonUrl;
+  profileUrl?: JsonUrl;
   container?: HTMLElement;
 }
 
 export interface PetManagerOptions {
   manifest: PetManifest;
+  characterDefinitions: PetCharacterDefinition[];
+  behaviorMapping: BehaviorActionMapping;
+  userProfile: UserProfileRuntimeConfiguration;
   runtimeConfig?: RuntimeConfig;
   assetBaseUrl: string;
   container?: HTMLElement;
 }
-
-export interface RuntimeEventMessage {
-  event: EventType;
-  payload?: Record<string, unknown>;
-}
-
-export interface EventMappingTarget {
-  character?: string;
-  state?: PetState;
-}
-
-export type EventMapping = Record<string, EventMappingTarget>;
 
 export interface PetEventAdapterCreateOptions {
   petManager?: PetManagerLike;
@@ -80,32 +74,27 @@ export interface PetEventAdapterCreateOptions {
 
 export interface PetEventAdapterOptions {
   petManager: PetManagerLike;
-  mapping: EventMapping;
+  behaviorResolver: BehaviorResolverLike;
 }
 
 export interface EventAdapterHandledDetail {
-  event: string;
-  payload: Record<string, unknown>;
-  mapping: Readonly<EventMappingTarget>;
+  event: EventType;
+  payload: Readonly<Record<string, unknown>>;
+  slot: BehaviorSlot;
   character: string;
-  state: PetState;
+  behavior: BehaviorSlot;
 }
 
 export interface BehaviorRuleDefinition {
   event?: string;
-  character?: string;
-  state?: PetState;
-  action?: string;
   duration?: number;
-  recover?: PetState;
+  recover?: BehaviorSlot;
   priority?: number;
   cooldownKey?: string;
 }
 
 export interface IdleBehaviorTarget {
-  state?: PetState;
-  action?: string;
-  actionByCharacter?: Record<string, string>;
+  slot: BehaviorSlot;
   weight?: number;
 }
 
@@ -124,12 +113,10 @@ export interface BehaviorRulesConfig {
 export interface Behavior {
   event: string;
   payload?: Record<string, unknown>;
-  character?: string;
-  state?: PetState;
-  action?: string;
+  slot: BehaviorSlot;
   priority: number;
   duration?: number;
-  recover?: PetState;
+  recover?: BehaviorSlot;
   cooldownKey?: string;
   startedAt: number;
   recoveredFrom?: string;
@@ -155,7 +142,7 @@ export interface PersonalityProfile {
   mood?: string;
   description?: string;
   keywords?: string[];
-  actionPreferences?: Partial<Record<PetState, PersonalityActionPreference[]>>;
+  actionPreferences?: Partial<Record<BehaviorSlot, PersonalityActionPreference[]>>;
 }
 
 export interface PersonalityProfilesConfig {
@@ -177,14 +164,14 @@ export interface PetPersonalityEngineOptions {
 
 export interface SelectActionOptions {
   characterId?: string;
-  state?: string;
+  slot?: string;
   fallbackAction?: string;
   mood?: string;
 }
 
 export interface PersonalitySelection {
   characterId: string;
-  state?: string;
+  slot?: string;
   mood: string;
   style?: string;
   selectedAction?: string;
@@ -194,22 +181,23 @@ export interface PersonalitySelection {
 
 export interface PetCharacterLike {
   id: string;
-  actionForState(state: PetState): { id: string };
+  getAction(actionId: string): PetAction;
 }
 
 export interface PetManagerLike {
   character: PetCharacterLike;
-  stateMachine: { state: PetState };
+  stateMachine: { state: BehaviorSlot };
   changeCharacter(characterId: string): Promise<void>;
-  changeState(state: PetState): void | Promise<void>;
+  changeBehavior(slot: BehaviorSlot): void | Promise<void>;
   changeAction(actionId: string): Promise<void>;
+  resolveAction(slot: BehaviorSlot): PetAction;
 }
 
 export interface PersonalityEngineLike {
   supports(characterId: string): boolean;
   selectAction(options: {
     characterId: string;
-    state: PetState;
+    slot: BehaviorSlot;
     fallbackAction: string;
   }): PersonalitySelection;
 }
@@ -226,6 +214,7 @@ export interface BehaviorSchedulerLike {
 export interface PetBehaviorEngineCreateOptions {
   petManager?: PetManagerLike;
   rulesUrl?: JsonUrl;
+  behaviorResolver?: BehaviorResolverLike;
   scheduler?: BehaviorSchedulerLike;
   personalityEngine?: PersonalityEngineLike;
 }
@@ -233,6 +222,7 @@ export interface PetBehaviorEngineCreateOptions {
 export interface PetBehaviorEngineOptions {
   petManager?: PetManagerLike;
   rules?: BehaviorRulesConfig;
+  behaviorResolver?: BehaviorResolverLike;
   scheduler?: BehaviorSchedulerLike;
   personalityEngine?: PersonalityEngineLike;
 }

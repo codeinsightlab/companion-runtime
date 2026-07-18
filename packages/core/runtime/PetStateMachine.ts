@@ -1,10 +1,10 @@
-import { PET_STATES as TYPED_PET_STATES } from "../types/PetState.js";
-import type { PetState } from "../types/PetState.js";
+import { BEHAVIOR_SLOTS as TYPED_BEHAVIOR_SLOTS } from "../types/BehaviorSlot.js";
+import type { BehaviorSlot } from "../types/BehaviorSlot.js";
 
-export const PET_STATES = Object.freeze([...TYPED_PET_STATES]);
+export const BEHAVIOR_SLOTS = Object.freeze([...TYPED_BEHAVIOR_SLOTS]);
 
 export class PetStateMachine extends EventTarget {
-  state: PetState;
+  state: BehaviorSlot;
 
   constructor(initialState: string = "IDLE") {
     super();
@@ -21,11 +21,11 @@ export class PetStateMachine extends EventTarget {
     return true;
   }
 
-  #validate(state: string): PetState {
+  #validate(state: string): BehaviorSlot {
     const normalized = String(state).toUpperCase();
-    if (!PET_STATES.includes(normalized as PetState)) {
-      throw new RangeError(`Unknown pet state "${state}". Expected: ${PET_STATES.join(", ")}`);
+    if (!BEHAVIOR_SLOTS.includes(normalized as BehaviorSlot)) {
+      throw new RangeError(`Unknown Behavior Slot "${state}". Expected: ${BEHAVIOR_SLOTS.join(", ")}`);
     }
-    return normalized as PetState;
+    return normalized as BehaviorSlot;
   }
 }

@@ -1,15 +1,17 @@
+import { BehaviorResolver } from "../behavior/BehaviorResolver.js";
+import type { CompanionEvent } from "../events/CompanionEvent.js";
 import type {
   EventAdapterHandledDetail,
   EventMapping,
+  BehaviorResolverLike,
   PetEventAdapterCreateOptions,
   PetEventAdapterOptions,
-  PetManagerLike,
-  RuntimeEventMessage
+  PetManagerLike
 } from "../types/RuntimeTypes.js";
 
 export class PetEventAdapter extends EventTarget {
   readonly petManager: PetManagerLike;
-  readonly mapping: Readonly<EventMapping>;
+  readonly behaviorResolver: BehaviorResolverLike;
 
   static async create({
     petManager,
@@ -22,65 +24,40 @@ export class PetEventAdapter extends EventTarget {
     if (!response.ok) {
       throw new Error(`Unable to load event mapping ${mappingUrl}: HTTP ${response.status}`);
     }
-
     const mapping = await response.json() as EventMapping;
-    return new PetEventAdapter({ petManager, mapping });
+    return new PetEventAdapter({
+      petManager,
+      behaviorResolver: new BehaviorResolver(mapping)
+    });
   }
 
-  constructor({ petManager, mapping }: PetEventAdapterOptions) {
+  constructor({ petManager, behaviorResolver }: PetEventAdapterOptions) {
     super();
     if (!petManager) throw new TypeError("PetEventAdapter requires petManager");
-    if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) {
-      throw new TypeError("PetEventAdapter requires an event mapping object");
-    }
-
+    if (!behaviorResolver) throw new TypeError("PetEventAdapter requires behaviorResolver");
     this.petManager = petManager;
-    this.mapping = Object.freeze(
-      Object.fromEntries(
-        Object.entries(mapping).map(([eventName, target]) => [eventName, Object.freeze({ ...target })])
-      )
-    );
+    this.behaviorResolver = behaviorResolver;
   }
 
-  async handle(message: RuntimeEventMessage): Promise<EventAdapterHandledDetail> {
-    if (!message || typeof message !== "object" || Array.isArray(message)) {
-      throw new TypeError("Pet event must be an object");
+  async handle(event: CompanionEvent): Promise<EventAdapterHandledDetail> {
+    if (!event || typeof event !== "object") {
+      throw new TypeError("Pet event must be a CompanionEvent");
     }
-
-    const event = String(message.event ?? "").trim();
-    if (!event) throw new TypeError("Pet event requires a non-empty event name");
-
-    const target = this.mapping[event];
-    if (!target) {
-      throw new RangeError(`Unknown pet event "${event}"`);
-    }
-    if (!target.character && !target.state) {
-      throw new TypeError(`Pet event mapping "${event}" must define character or state`);
-    }
-
-    if (target.character && target.character !== this.petManager.character.id) {
-      await this.petManager.changeCharacter(target.character);
-    }
-    if (target.state) {
-      await this.petManager.changeState(target.state);
-    }
+    const slot = this.behaviorResolver.resolve(event);
+    await this.petManager.changeBehavior(slot);
 
     const detail: EventAdapterHandledDetail = {
-      event,
-      payload: message.payload ?? {},
-      mapping: target,
+      event: event.type,
+      payload: event.payload,
+      slot,
       character: this.petManager.character.id,
-      state: this.petManager.stateMachine.state
+      behavior: this.petManager.stateMachine.state
     };
     this.dispatchEvent(new CustomEvent("handled", { detail }));
     return detail;
   }
 
-  supports(eventName: string): boolean {
-    return Object.hasOwn(this.mapping, eventName);
-  }
-
-  listEvents(): string[] {
-    return Object.keys(this.mapping);
+  supports(eventType: string, name?: string): boolean {
+    return this.behaviorResolver.supports(eventType, name);
   }
 }

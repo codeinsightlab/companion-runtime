@@ -2,9 +2,6 @@ import type {
   CompanionEvent,
   EventSource
 } from "./CompanionEvent.js";
-import {
-  isKnownEventType
-} from "./EventType.js";
 import type {
   EventType,
   KnownEventType
@@ -15,14 +12,10 @@ export type EventSourceInput = string | EventSource;
 export interface RawEventInput {
   readonly id?: string;
   readonly event: string;
+  readonly name?: string;
   readonly source: EventSourceInput;
   readonly payload?: Record<string, unknown>;
   readonly timestamp?: number;
-}
-
-export interface RuntimeEventMessage {
-  readonly event: string;
-  readonly payload?: Record<string, unknown>;
 }
 
 const EVENT_ALIASES: Readonly<Record<string, KnownEventType>> = Object.freeze({
@@ -34,18 +27,8 @@ const EVENT_ALIASES: Readonly<Record<string, KnownEventType>> = Object.freeze({
   TASK_SUCCESS: "TASK_SUCCESS",
   ERROR: "TASK_ERROR",
   TASK_ERROR: "TASK_ERROR",
-  REVIEW: "CODE_REVIEW",
-  CODE_REVIEW: "CODE_REVIEW",
-  IDLE: "IDLE"
-});
-
-const RUNTIME_EVENT_NAMES: Readonly<Record<KnownEventType, string>> = Object.freeze({
-  TASK_START: "task_start",
-  TASK_RUNNING: "task_running",
-  TASK_SUCCESS: "task_success",
-  TASK_ERROR: "task_error",
-  CODE_REVIEW: "code_review",
-  IDLE: "idle"
+  IDLE: "IDLE",
+  CUSTOM_EVENT: "CUSTOM_EVENT"
 });
 
 export class EventNormalizer {
@@ -62,6 +45,7 @@ export class EventNormalizer {
     return Object.freeze({
       id,
       type,
+      ...(input.name ? { name: input.name } : {}),
       source: Object.freeze(source),
       payload: Object.freeze({ ...(input.payload ?? {}) }),
       timestamp
@@ -76,16 +60,6 @@ export class EventNormalizer {
       .replace(/^_+|_+$/g, "");
     if (!normalized) throw new TypeError("Event type must be non-empty");
     return EVENT_ALIASES[normalized] ?? normalized;
-  }
-
-  toRuntimeMessage(event: CompanionEvent): RuntimeEventMessage {
-    const runtimeEvent = isKnownEventType(event.type)
-      ? RUNTIME_EVENT_NAMES[event.type]
-      : event.type.toLowerCase();
-    return {
-      event: runtimeEvent,
-      payload: { ...event.payload }
-    };
   }
 
   normalizeSource(source: EventSourceInput): EventSource {

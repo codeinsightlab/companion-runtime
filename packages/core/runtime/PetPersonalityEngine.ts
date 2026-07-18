@@ -1,4 +1,4 @@
-import type { PetState } from "../types/PetState.js";
+import type { BehaviorSlot } from "../types/BehaviorSlot.js";
 import type {
   JsonUrl,
   PersonalityActionPreference,
@@ -62,16 +62,16 @@ export class PetPersonalityEngine extends EventTarget {
 
   selectAction({
     characterId,
-    state,
+    slot,
     fallbackAction,
     mood
   }: SelectActionOptions = {}): PersonalitySelection {
     if (!characterId) throw new TypeError("selectAction requires characterId");
 
     const profile = this.getProfile(characterId);
-    const normalizedState = state ? String(state).toUpperCase() : undefined;
-    const preferences = normalizedState
-      ? profile.actionPreferences?.[normalizedState as PetState] ?? []
+    const normalizedSlot = slot ? String(slot).toUpperCase() : undefined;
+    const preferences = normalizedSlot
+      ? profile.actionPreferences?.[normalizedSlot as BehaviorSlot] ?? []
       : [];
     const selectedAction = preferences.length > 0
       ? PetPersonalityEngine.selectWeighted(preferences, this.random)?.action
@@ -79,7 +79,7 @@ export class PetPersonalityEngine extends EventTarget {
 
     const detail: PersonalitySelection = {
       characterId,
-      state: normalizedState,
+      slot: normalizedSlot,
       mood: this.#normalizeMood(mood ?? profile.mood),
       style: profile.style,
       selectedAction: selectedAction ?? fallbackAction,

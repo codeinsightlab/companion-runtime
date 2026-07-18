@@ -1,9 +1,11 @@
 import { BehaviorRule } from "./BehaviorRule.js";
 import { BehaviorScheduler } from "./BehaviorScheduler.js";
-import type { PetState } from "../types/PetState.js";
+import type { CompanionEvent } from "../events/CompanionEvent.js";
+import type { BehaviorSlot } from "../types/BehaviorSlot.js";
 import type {
   Behavior,
   BehaviorIgnoreReason,
+  BehaviorResolverLike,
   BehaviorResult,
   BehaviorRulesConfig,
   BehaviorSchedulerLike,
@@ -12,13 +14,13 @@ import type {
   PersonalitySelection,
   PetBehaviorEngineCreateOptions,
   PetBehaviorEngineOptions,
-  PetManagerLike,
-  RuntimeEventMessage
+  PetManagerLike
 } from "../types/RuntimeTypes.js";
 
 export class PetBehaviorEngine extends EventTarget {
   readonly petManager: PetManagerLike;
   readonly rules: BehaviorRulesConfig;
+  readonly behaviorResolver: BehaviorResolverLike;
   readonly scheduler: BehaviorSchedulerLike;
   readonly personalityEngine?: PersonalityEngineLike;
   running: boolean;
@@ -27,11 +29,13 @@ export class PetBehaviorEngine extends EventTarget {
   static async create({
     petManager,
     rulesUrl,
+    behaviorResolver,
     scheduler,
     personalityEngine
   }: PetBehaviorEngineCreateOptions = {}): Promise<PetBehaviorEngine> {
     if (!petManager) throw new TypeError("PetBehaviorEngine.create requires petManager");
     if (!rulesUrl) throw new TypeError("PetBehaviorEngine.create requires rulesUrl");
+    if (!behaviorResolver) throw new TypeError("PetBehaviorEngine.create requires behaviorResolver");
 
     const response = await fetch(rulesUrl);
     if (!response.ok) {
@@ -39,12 +43,19 @@ export class PetBehaviorEngine extends EventTarget {
     }
 
     const rules = await response.json() as BehaviorRulesConfig;
-    return new PetBehaviorEngine({ petManager, rules, scheduler, personalityEngine });
+    return new PetBehaviorEngine({
+      petManager,
+      rules,
+      behaviorResolver,
+      scheduler,
+      personalityEngine
+    });
   }
 
   constructor({
     petManager,
     rules,
+    behaviorResolver,
     scheduler = new BehaviorScheduler(),
     personalityEngine
   }: PetBehaviorEngineOptions = {}) {
@@ -53,15 +64,17 @@ export class PetBehaviorEngine extends EventTarget {
     if (!rules || typeof rules !== "object" || Array.isArray(rules)) {
       throw new TypeError("PetBehaviorEngine requires a behavior-rules object");
     }
+    if (!behaviorResolver) throw new TypeError("PetBehaviorEngine requires behaviorResolver");
 
     this.petManager = petManager;
     this.rules = rules;
+    this.behaviorResolver = behaviorResolver;
     this.scheduler = scheduler;
     this.personalityEngine = personalityEngine;
     this.running = false;
     this.currentBehavior = {
-      event: "idle",
-      state: petManager.stateMachine?.state ?? "IDLE",
+      event: "IDLE",
+      slot: petManager.stateMachine.state,
       priority: this.#priorityFor("IDLE"),
       startedAt: Date.now()
     };
@@ -78,19 +91,19 @@ export class PetBehaviorEngine extends EventTarget {
     this.scheduler.stop();
   }
 
-  async handleEvent(message: RuntimeEventMessage): Promise<BehaviorResult> {
-    if (!message || typeof message !== "object" || Array.isArray(message)) {
-      throw new TypeError("Behavior event must be an object");
+  async handleEvent(event: CompanionEvent): Promise<BehaviorResult> {
+    if (!event || typeof event !== "object") {
+      throw new TypeError("Behavior event must be a CompanionEvent");
     }
+    const eventKey = event.type === "CUSTOM_EVENT" && event.name
+      ? `CUSTOM_EVENT:${event.name}`
+      : event.type;
+    const ruleDefinition = this.rules.events[eventKey];
+    if (!ruleDefinition) throw new RangeError(`Unknown behavior event "${eventKey}"`);
 
-    const event = String(message.event ?? "").trim();
-    if (!event) throw new TypeError("Behavior event requires a non-empty event name");
-
-    const ruleDefinition = this.rules.events?.[event];
-    if (!ruleDefinition) throw new RangeError(`Unknown behavior event "${event}"`);
-
-    const rule = BehaviorRule.fromEvent(event, ruleDefinition, this.rules.priorities);
-    const behavior = rule.toBehavior(message.payload ?? {});
+    const slot = this.behaviorResolver.resolve(event);
+    const rule = BehaviorRule.fromEvent(eventKey, ruleDefinition, slot, this.rules.priorities);
+    const behavior = rule.toBehavior({ ...event.payload });
     const cooldownMs = behavior.cooldownKey
       ? this.rules.cooldown?.[behavior.cooldownKey] ?? 0
       : 0;
@@ -98,7 +111,6 @@ export class PetBehaviorEngine extends EventTarget {
     if (this.scheduler.isCoolingDown(behavior.cooldownKey)) {
       return this.#ignore(behavior, "cooldown");
     }
-
     if (!this.#canInterrupt(behavior)) {
       return this.#ignore(behavior, "priority");
     }
@@ -125,54 +137,52 @@ export class PetBehaviorEngine extends EventTarget {
   }
 
   listEvents(): string[] {
-    return Object.keys(this.rules.events ?? {});
+    return Object.keys(this.rules.events);
   }
 
-  supports(eventName: string): boolean {
-    return Object.hasOwn(this.rules.events ?? {}, eventName);
+  supports(eventType: string, name?: string): boolean {
+    const key = eventType === "CUSTOM_EVENT" && name
+      ? `CUSTOM_EVENT:${name}`
+      : eventType;
+    return Object.hasOwn(this.rules.events, key);
   }
 
   #canInterrupt(behavior: Behavior): boolean {
-    return behavior.priority >= (this.currentBehavior?.priority ?? 0);
+    return behavior.priority >= this.currentBehavior.priority;
   }
 
   async #applyBehavior(behavior: Behavior): Promise<void> {
-    if (behavior.character && behavior.character !== this.petManager.character.id) {
-      await this.petManager.changeCharacter(behavior.character);
-    }
-    const character = this.petManager.character;
-    if (behavior.state) {
-      const fallbackAction = character.actionForState(behavior.state).id;
-      const selection = this.#selectPersonalityAction(character.id, behavior.state, fallbackAction);
-      behavior.selectedAction = selection.selectedAction;
-      behavior.mood = selection.mood;
-      behavior.style = selection.style;
-      behavior.usedPersonalityPreference = selection.usedPreference;
-      await this.petManager.changeState(behavior.state);
-      if (selection.usedPreference && selection.selectedAction) {
-        await this.petManager.changeAction(selection.selectedAction);
-        return;
-      }
-      return;
-    }
-    if (behavior.action) {
-      behavior.selectedAction = behavior.action;
-      await this.petManager.changeAction(behavior.action);
+    const fallbackAction = this.petManager.resolveAction(behavior.slot).id;
+    const selection = this.#selectPersonalityAction(
+      this.petManager.character.id,
+      behavior.slot,
+      fallbackAction
+    );
+    behavior.selectedAction = selection.selectedAction;
+    behavior.mood = selection.mood;
+    behavior.style = selection.style;
+    behavior.usedPersonalityPreference = selection.usedPreference;
+    await this.petManager.changeBehavior(behavior.slot);
+    if (selection.usedPreference && selection.selectedAction) {
+      await this.petManager.changeAction(selection.selectedAction);
     }
   }
 
-  async #recover(state: PetState, sourceBehavior: Behavior): Promise<void> {
-    const character = this.petManager.character;
-    const fallbackAction = character.actionForState(state).id;
-    const selection = this.#selectPersonalityAction(character.id, state, fallbackAction);
-    await this.petManager.changeState(state);
+  async #recover(slot: BehaviorSlot, sourceBehavior: Behavior): Promise<void> {
+    const fallbackAction = this.petManager.resolveAction(slot).id;
+    const selection = this.#selectPersonalityAction(
+      this.petManager.character.id,
+      slot,
+      fallbackAction
+    );
+    await this.petManager.changeBehavior(slot);
     if (selection.usedPreference && selection.selectedAction) {
       await this.petManager.changeAction(selection.selectedAction);
     }
     this.currentBehavior = {
       event: `${sourceBehavior.event}:recover`,
-      state,
-      priority: this.#priorityFor(state),
+      slot,
+      priority: this.#priorityFor(slot),
       startedAt: Date.now(),
       recoveredFrom: sourceBehavior.event,
       selectedAction: selection.selectedAction,
@@ -186,19 +196,16 @@ export class PetBehaviorEngine extends EventTarget {
 
   async #runIdleBehavior(): Promise<void> {
     if (!this.running) return;
-
     const target = this.#pickIdleTarget();
     if (!target) return;
 
     this.scheduler.clearRecovery();
     const behavior: Behavior = {
-      event: "idle:auto",
-      state: target.state,
-      action: this.#resolveIdleAction(target),
+      event: "IDLE:auto",
+      slot: target.slot,
       priority: this.#priorityFor("IDLE"),
       startedAt: Date.now()
     };
-
     await this.#applyBehavior(behavior);
     this.currentBehavior = behavior;
     this.dispatchEvent(new CustomEvent("idle", { detail: { behavior } }));
@@ -224,13 +231,6 @@ export class PetBehaviorEngine extends EventTarget {
     return weighted.at(-1)?.entry;
   }
 
-  #resolveIdleAction(target: IdleBehaviorTarget): string | undefined {
-    if (target.actionByCharacter) {
-      return target.actionByCharacter[this.petManager.character.id] ?? target.action;
-    }
-    return target.action;
-  }
-
   #scheduleIdle(): void {
     if (!this.running) return;
     this.scheduler.scheduleIdle(this.rules.idle?.timeout ?? 0, () => {
@@ -238,27 +238,26 @@ export class PetBehaviorEngine extends EventTarget {
     });
   }
 
-  #priorityFor(state: PetState): number {
-    return Number(this.rules.priorities?.[state] ?? 0);
+  #priorityFor(slot: BehaviorSlot): number {
+    return Number(this.rules.priorities[slot] ?? 0);
   }
 
   #selectPersonalityAction(
     characterId: string,
-    state: PetState,
+    slot: BehaviorSlot,
     fallbackAction: string
   ): PersonalitySelection {
-    if (!this.personalityEngine?.supports?.(characterId)) {
+    if (!this.personalityEngine?.supports(characterId)) {
       return {
         characterId,
-        state,
+        slot,
         selectedAction: fallbackAction,
         fallbackAction,
         mood: "normal",
         usedPreference: false
       };
     }
-
-    return this.personalityEngine.selectAction({ characterId, state, fallbackAction });
+    return this.personalityEngine.selectAction({ characterId, slot, fallbackAction });
   }
 
   #ignore(behavior: Behavior, reason: BehaviorIgnoreReason): BehaviorResult {

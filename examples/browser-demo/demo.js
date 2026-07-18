@@ -6,16 +6,19 @@ import { PetPersonalityEngine } from "../../packages/core/runtime/PetPersonality
 const manifestUrl = new URL("../../packages/core/config/pet-manifest.json", import.meta.url);
 const configUrl = new URL("../../packages/core/config/runtime-config.json", import.meta.url);
 const eventMappingUrl = new URL("../../packages/core/config/event-mapping.json", import.meta.url);
+const behaviorMappingUrl = new URL("../../packages/core/config/behavior-mapping.json", import.meta.url);
+const profileUrl = new URL("../../packages/core/config/user-profile.json", import.meta.url);
 const behaviorRulesUrl = new URL("../../packages/core/config/behavior-rules.json", import.meta.url);
 const personalityProfilesUrl = new URL("../../packages/core/config/personality-profiles.json", import.meta.url);
 
-const manager = await PetManager.create({ manifestUrl, configUrl });
+const manager = await PetManager.create({ manifestUrl, configUrl, behaviorMappingUrl, profileUrl });
 await manager.ready;
 const eventAdapter = await PetEventAdapter.create({ petManager: manager, mappingUrl: eventMappingUrl });
 const personalityEngine = await PetPersonalityEngine.create({ profilesUrl: personalityProfilesUrl });
 const behaviorEngine = await PetBehaviorEngine.create({
   petManager: manager,
   rulesUrl: behaviorRulesUrl,
+  behaviorResolver: eventAdapter.behaviorResolver,
   personalityEngine
 });
 behaviorEngine.start();
@@ -38,8 +41,18 @@ for (const character of manager.listCharacters()) {
   characterSelect.add(new Option(character.name, character.id));
 }
 
-for (const state of manager.listStates()) {
-  stateSelect.add(new Option(state, state));
+for (const slot of manager.listBehaviorSlots()) {
+  stateSelect.add(new Option(slot, slot));
+}
+
+function createEvent(type, source) {
+  return {
+    id: crypto.randomUUID(),
+    type,
+    source: { app: "browser-demo", collector: source },
+    payload: {},
+    timestamp: Date.now()
+  };
 }
 
 function refreshActions() {
@@ -47,24 +60,24 @@ function refreshActions() {
   for (const action of manager.character.listActions()) {
     actionSelect.add(new Option(action, action));
   }
-  actionSelect.value = manager.character.actionForState(manager.stateMachine.state).id;
+  actionSelect.value = manager.resolveAction(manager.stateMachine.state).id;
 }
 
 function refreshStatus() {
-  const actionId = manager.viewer.element.dataset.action ?? manager.character.actionForState(manager.stateMachine.state).id;
+  const actionId = manager.viewer.element.dataset.action ?? manager.resolveAction(manager.stateMachine.state).id;
   status.textContent = `${manager.character.name} / ${manager.stateMachine.state} / ${actionId}`;
 }
 
 function refreshBehaviorStatus(prefix = "Behavior", behaviorOverride) {
   const behavior = behaviorOverride ?? behaviorEngine.getCurrentBehavior();
-  const action = behavior.selectedAction ?? behavior.action ?? manager.character.actionForState(manager.stateMachine.state).id;
-  behaviorStatus.textContent = `${prefix}: ${behavior.event} / ${manager.character.name} / ${behavior.state ?? "DIRECT"} / ${action}`;
+  const action = behavior.selectedAction ?? manager.resolveAction(manager.stateMachine.state).id;
+  behaviorStatus.textContent = `${prefix}: ${behavior.event} / ${manager.character.name} / ${behavior.slot} / ${action}`;
 }
 
 function refreshPersonalityStatus(behaviorOverride) {
   const behavior = behaviorOverride ?? behaviorEngine.getCurrentBehavior();
   const profile = personalityEngine.getProfile(manager.character.id);
-  const selectedAction = behavior.selectedAction ?? behavior.action ?? manager.character.actionForState(manager.stateMachine.state).id;
+  const selectedAction = behavior.selectedAction ?? manager.resolveAction(manager.stateMachine.state).id;
   personalityStatus.textContent = `${manager.character.name} / ${profile.mood ?? "normal"} / ${selectedAction}`;
 }
 
@@ -91,7 +104,7 @@ characterSelect.addEventListener("change", async () => {
 });
 
 stateSelect.addEventListener("change", async () => {
-  await manager.changeState(stateSelect.value);
+  await manager.changeBehavior(stateSelect.value);
   refreshActions();
   refreshStatus();
 });
@@ -112,9 +125,9 @@ document.querySelector("#hide").addEventListener("click", () => manager.hidePet(
 for (const button of document.querySelectorAll("[data-pet-event]")) {
   button.addEventListener("click", async () => {
     const event = button.dataset.petEvent;
-    await eventAdapter.handle({ event, payload: { source: "demo" } });
+    await eventAdapter.handle(createEvent(event, "event-adapter-demo"));
     syncControls();
-    const actionId = manager.viewer.element.dataset.action ?? manager.character.actionForState(manager.stateMachine.state).id;
+    const actionId = manager.viewer.element.dataset.action ?? manager.resolveAction(manager.stateMachine.state).id;
     status.textContent = `${event} → ${manager.character.name} / ${manager.stateMachine.state} / ${actionId}`;
   });
 }
@@ -122,9 +135,9 @@ for (const button of document.querySelectorAll("[data-pet-event]")) {
 for (const button of document.querySelectorAll("[data-behavior-event]")) {
   button.addEventListener("click", async () => {
     const event = button.dataset.behaviorEvent;
-    const result = await behaviorEngine.handleEvent({ event, payload: { source: "behavior-demo" } });
+    const result = await behaviorEngine.handleEvent(createEvent(event, "behavior-demo"));
     syncControls();
-    const actionId = manager.viewer.element.dataset.action ?? manager.character.actionForState(manager.stateMachine.state).id;
+    const actionId = manager.viewer.element.dataset.action ?? manager.resolveAction(manager.stateMachine.state).id;
     status.textContent = `${event} → ${manager.character.name} / ${manager.stateMachine.state} / ${actionId}`;
     refreshBehaviorStatus(result.accepted ? "Accepted" : `Ignored (${result.reason})`, result.behavior);
     refreshPersonalityStatus(result.behavior);
@@ -136,9 +149,9 @@ for (const button of document.querySelectorAll("[data-personality-character]")) 
     const character = button.dataset.personalityCharacter;
     const event = button.dataset.personalityEvent;
     await manager.changeCharacter(character);
-    const result = await behaviorEngine.handleEvent({ event, payload: { source: "personality-demo" } });
+    const result = await behaviorEngine.handleEvent(createEvent(event, "personality-demo"));
     syncControls();
-    const actionId = manager.viewer.element.dataset.action ?? manager.character.actionForState(manager.stateMachine.state).id;
+    const actionId = manager.viewer.element.dataset.action ?? manager.resolveAction(manager.stateMachine.state).id;
     status.textContent = `${event} → ${manager.character.name} / ${manager.stateMachine.state} / ${actionId}`;
     refreshBehaviorStatus(result.accepted ? "Accepted" : `Ignored (${result.reason})`, result.behavior);
     refreshPersonalityStatus(result.behavior);
@@ -146,7 +159,7 @@ for (const button of document.querySelectorAll("[data-personality-character]")) 
 }
 
 document.querySelector("#idle-mode").addEventListener("click", async () => {
-  await manager.changeState("IDLE");
+  await manager.changeBehavior("IDLE");
   behaviorEngine.stop();
   behaviorEngine.start();
   syncControls();

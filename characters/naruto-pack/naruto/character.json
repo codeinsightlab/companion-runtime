@@ -1,0 +1,22 @@
+{
+  "id": "naruto",
+  "name": "漩涡鸣人",
+  "version": "1.0.0",
+  "actions": ["idle", "thinking", "working", "celebrate", "celebrate-alt", "danger", "focus"],
+  "behaviorMapping": {
+    "IDLE": "idle",
+    "THINKING": "thinking",
+    "EXECUTING": "working",
+    "SUCCESS": "celebrate",
+    "ERROR": "danger"
+  },
+  "assets": {
+    "idle": { "asset": "idle.png" },
+    "thinking": { "asset": "sage-mode.png" },
+    "working": { "asset": "rasenshuriken.png" },
+    "celebrate": { "asset": "big-rasengan.png" },
+    "celebrate-alt": { "asset": "shadow-clone.png" },
+    "danger": { "asset": "shadow-clone.png" },
+    "focus": { "asset": "code-focus.png" }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "id": "itachi",
+  "name": "宇智波鼬",
+  "version": "1.0.0",
+  "actions": ["idle", "thinking", "working", "celebrate", "danger", "appear", "focus"],
+  "behaviorMapping": {
+    "IDLE": "idle",
+    "THINKING": "thinking",
+    "EXECUTING": "working",
+    "SUCCESS": "celebrate",
+    "ERROR": "danger"
+  },
+  "assets": {
+    "idle": { "asset": "idle.png" },
+    "thinking": { "asset": "sharingan.png" },
+    "working": { "asset": "fireball.png" },
+    "celebrate": { "asset": "susanoo.png" },
+    "danger": { "asset": "crow-dissolve.png" },
+    "appear": { "asset": "crow-appear.png" },
+    "focus": { "asset": "code-review.png" }
+  }
+}

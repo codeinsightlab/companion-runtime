@@ -11,17 +11,13 @@
       "actionPreferences": {
         "SUCCESS": [
           {
-            "action": "susanoo",
-            "weight": 80
-          },
-          {
-            "action": "code-focus",
-            "weight": 20
+            "action": "celebrate",
+            "weight": 100
           }
         ],
         "ERROR": [
           {
-            "action": "code-focus",
+            "action": "danger",
             "weight": 100
           }
         ]
@@ -35,21 +31,21 @@
       "actionPreferences": {
         "SUCCESS": [
           {
-            "action": "big-rasengan",
+            "action": "celebrate",
             "weight": 70
           },
           {
-            "action": "shadow-clone",
+            "action": "celebrate-alt",
             "weight": 30
           }
         ],
         "EXECUTING": [
           {
-            "action": "rasenshuriken",
+            "action": "working",
             "weight": 80
           },
           {
-            "action": "code-focus",
+            "action": "focus",
             "weight": 20
           }
         ]
@@ -58,24 +54,18 @@
     "itachi": {
       "style": "silent",
       "mood": "normal",
-      "description": "Silent, observant, review-oriented ninja companion.",
-      "keywords": ["silent", "insightful", "reviewing"],
+      "description": "Silent, observant, focused ninja companion.",
+      "keywords": ["silent", "insightful", "focused"],
       "actionPreferences": {
-        "REVIEWING": [
-          {
-            "action": "sharingan",
-            "weight": 100
-          }
-        ],
         "SUCCESS": [
           {
-            "action": "susanoo",
+            "action": "celebrate",
             "weight": 100
           }
         ],
         "ERROR": [
           {
-            "action": "crow-dissolve",
+            "action": "danger",
             "weight": 100
           }
         ]

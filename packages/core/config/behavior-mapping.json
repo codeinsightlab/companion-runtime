@@ -1,0 +1,7 @@
+{
+  "IDLE": "idle",
+  "THINKING": "thinking",
+  "EXECUTING": "working",
+  "SUCCESS": "celebrate",
+  "ERROR": "danger"
+}

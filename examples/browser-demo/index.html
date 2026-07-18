@@ -20,7 +20,7 @@
         </label>
 
         <label>
-          状态
+          Behavior Slot
           <select id="state"></select>
         </label>
 
@@ -55,14 +55,13 @@
         <div>
           <p class="panel-kicker">EVENT ADAPTER</p>
           <h2>外部事件映射</h2>
-          <p>按钮发送统一事件对象，由配置决定角色与状态。</p>
+          <p>按钮发送统一 Event，由配置解析 Behavior Slot；当前角色保持不变。</p>
         </div>
         <div class="event-buttons">
-          <button type="button" data-pet-event="task_start">Task Start</button>
-          <button type="button" data-pet-event="task_running">Running</button>
-          <button type="button" data-pet-event="code_review">Code Review</button>
-          <button type="button" data-pet-event="task_success">Success</button>
-          <button type="button" data-pet-event="task_error">Error</button>
+          <button type="button" data-pet-event="TASK_START">Task Start</button>
+          <button type="button" data-pet-event="TASK_RUNNING">Running</button>
+          <button type="button" data-pet-event="TASK_SUCCESS">Success</button>
+          <button type="button" data-pet-event="TASK_ERROR">Error</button>
         </div>
       </section>
 
@@ -73,11 +72,10 @@
           <p>按钮经过优先级、冷却和恢复调度后再驱动宠物。</p>
         </div>
         <div class="event-buttons">
-          <button type="button" data-behavior-event="task_start">Task Start</button>
-          <button type="button" data-behavior-event="task_running">Running</button>
-          <button type="button" data-behavior-event="code_review">Code Review</button>
-          <button type="button" data-behavior-event="task_success">Success</button>
-          <button type="button" data-behavior-event="task_error">Error</button>
+          <button type="button" data-behavior-event="TASK_START">Task Start</button>
+          <button type="button" data-behavior-event="TASK_RUNNING">Running</button>
+          <button type="button" data-behavior-event="TASK_SUCCESS">Success</button>
+          <button type="button" data-behavior-event="TASK_ERROR">Error</button>
           <button id="idle-mode" type="button" class="secondary">Idle Mode</button>
         </div>
       </section>
@@ -89,10 +87,9 @@
           <p>同一行为会根据角色人格选择不同展示动作。</p>
         </div>
         <div class="event-buttons">
-          <button type="button" data-personality-character="sasuke" data-personality-event="task_success">Sasuke Success</button>
-          <button type="button" data-personality-character="naruto" data-personality-event="task_success">Naruto Success</button>
-          <button type="button" data-personality-character="itachi" data-personality-event="code_review">Itachi Review</button>
-          <button type="button" data-personality-character="itachi" data-personality-event="task_error">Itachi Error</button>
+          <button type="button" data-personality-character="sasuke" data-personality-event="TASK_SUCCESS">Sasuke Success</button>
+          <button type="button" data-personality-character="naruto" data-personality-event="TASK_SUCCESS">Naruto Success</button>
+          <button type="button" data-personality-character="itachi" data-personality-event="TASK_ERROR">Itachi Error</button>
         </div>
       </section>
 

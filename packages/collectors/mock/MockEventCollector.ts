@@ -11,6 +11,7 @@ export interface MockEventInput {
   readonly id?: string;
   readonly type?: EventType;
   readonly event?: string;
+  readonly name?: string;
   readonly source?: string | EventSource;
   readonly payload?: Record<string, unknown>;
   readonly timestamp?: number;
@@ -50,6 +51,7 @@ export class MockEventCollector implements EventCollector {
     const event = this.#normalizer.normalize({
       id: input.id,
       event: eventName,
+      name: input.name,
       source: input.source ?? { app: "mock", collector: "mock" },
       payload: input.payload,
       timestamp: input.timestamp

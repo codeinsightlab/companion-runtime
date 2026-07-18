@@ -22,17 +22,16 @@ test("EventNormalizer converts source events to CompanionEvent", () => {
   });
 });
 
-test("EventNormalizer converts standard types to V1 Runtime event names", () => {
+test("EventNormalizer preserves CUSTOM_EVENT name", () => {
   const normalizer = new EventNormalizer();
   const event = normalizer.normalize({
     id: "normalizer-2",
     source: { app: "mock", platform: "test" },
-    event: "TASK_SUCCESS",
+    event: "CUSTOM_EVENT",
+    name: "CODE_REVIEW",
     timestamp: 456
   });
 
-  assert.deepEqual(normalizer.toRuntimeMessage(event), {
-    event: "task_success",
-    payload: {}
-  });
+  assert.equal(event.type, "CUSTOM_EVENT");
+  assert.equal(event.name, "CODE_REVIEW");
 });

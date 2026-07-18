@@ -12,8 +12,8 @@ const profiles = {
       mood: "focused",
       actionPreferences: {
         SUCCESS: [
-          { action: "susanoo", weight: 80 },
-          { action: "code-focus", weight: 20 }
+          { action: "celebrate", weight: 80 },
+          { action: "focus", weight: 20 }
         ]
       }
     },
@@ -21,8 +21,8 @@ const profiles = {
       style: "energetic",
       actionPreferences: {
         SUCCESS: [
-          { action: "big-rasengan", weight: 70 },
-          { action: "shadow-clone", weight: 30 }
+          { action: "celebrate", weight: 70 },
+          { action: "celebrate-alt", weight: 30 }
         ]
       }
     },
@@ -30,52 +30,52 @@ const profiles = {
       style: "silent",
       actionPreferences: {
         ERROR: [
-          { action: "crow-dissolve", weight: 100 }
+          { action: "danger", weight: 100 }
         ]
       }
     }
   }
 } satisfies PersonalityProfilesConfig;
 
-test("Sasuke SUCCESS can select susanoo from personality preferences", () => {
+test("Sasuke SUCCESS can select celebrate from personality preferences", () => {
   const engine = new PetPersonalityEngine({ profiles, random: () => 0.1 });
   const result = engine.selectAction({
     characterId: "sasuke",
-    state: "SUCCESS",
-    fallbackAction: "susanoo"
+    slot: "SUCCESS",
+    fallbackAction: "celebrate"
   });
 
-  assert.equal(result.selectedAction, "susanoo");
+  assert.equal(result.selectedAction, "celebrate");
   assert.equal(result.mood, "focused");
   assert.equal(result.style, "calm");
   assert.equal(result.usedPreference, true);
 });
 
-test("Naruto SUCCESS can select big-rasengan or shadow-clone by weight", () => {
+test("Naruto SUCCESS selects configured generic actions by weight", () => {
   const big = new PetPersonalityEngine({ profiles, random: () => 0.69 }).selectAction({
     characterId: "naruto",
-    state: "SUCCESS",
-    fallbackAction: "big-rasengan"
+    slot: "SUCCESS",
+    fallbackAction: "celebrate"
   });
   const clone = new PetPersonalityEngine({ profiles, random: () => 0.71 }).selectAction({
     characterId: "naruto",
-    state: "SUCCESS",
-    fallbackAction: "big-rasengan"
+    slot: "SUCCESS",
+    fallbackAction: "celebrate"
   });
 
-  assert.equal(big.selectedAction, "big-rasengan");
-  assert.equal(clone.selectedAction, "shadow-clone");
+  assert.equal(big.selectedAction, "celebrate");
+  assert.equal(clone.selectedAction, "celebrate-alt");
 });
 
-test("Itachi ERROR is fixed to crow-dissolve", () => {
+test("Itachi ERROR resolves to the generic danger action", () => {
   const engine = new PetPersonalityEngine({ profiles, random: () => 0.99 });
   const result = engine.selectAction({
     characterId: "itachi",
-    state: "ERROR",
-    fallbackAction: "crow-dissolve"
+    slot: "ERROR",
+    fallbackAction: "danger"
   });
 
-  assert.equal(result.selectedAction, "crow-dissolve");
+  assert.equal(result.selectedAction, "danger");
   assert.equal(result.usedPreference, true);
 });
 

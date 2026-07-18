@@ -1,7 +1,6 @@
 {
   "enabled": true,
-  "character": "sasuke",
-  "state": "IDLE",
+  "behavior": "IDLE",
   "position": "bottom-right",
   "size": 128
 }

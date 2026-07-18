@@ -3,23 +3,23 @@ import type { PetActionDefinition } from "../types/RuntimeTypes.js";
 
 export class PetAction implements PetActionContract {
   readonly id: string;
-  readonly file: string;
+  readonly asset: string;
   readonly characterId: string;
   readonly assetBase: string;
 
-  constructor({ id, file, characterId, assetBase }: PetActionDefinition) {
-    if (!id || !file || !characterId || !assetBase) {
-      throw new TypeError("PetAction requires id, file, characterId and assetBase");
+  constructor({ id, asset, characterId, assetBase }: PetActionDefinition) {
+    if (!id || !asset || !characterId || !assetBase) {
+      throw new TypeError("PetAction requires id, asset, characterId and assetBase");
     }
 
     this.id = id;
-    this.file = file;
+    this.asset = asset;
     this.characterId = characterId;
     this.assetBase = assetBase.replace(/\/$/, "");
     Object.freeze(this);
   }
 
   get src(): string {
-    return `${this.assetBase}/${encodeURIComponent(this.characterId)}/${encodeURIComponent(this.file)}`;
+    return `${this.assetBase}/${encodeURIComponent(this.characterId)}/${encodeURIComponent(this.asset)}`;
   }
 }

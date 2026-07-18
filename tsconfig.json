@@ -14,7 +14,9 @@
   },
   "include": [
     "packages/collectors/**/*.ts",
+    "packages/core/behavior/**/*.ts",
     "packages/core/events/**/*.ts",
+    "packages/core/profile/**/*.ts",
     "packages/core/runtime/**/*.ts",
     "packages/core/tests/**/*.ts",
     "packages/core/types/**/*.ts"

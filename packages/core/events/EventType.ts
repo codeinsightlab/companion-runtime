@@ -3,8 +3,8 @@ export const KNOWN_EVENT_TYPES = [
   "TASK_RUNNING",
   "TASK_SUCCESS",
   "TASK_ERROR",
-  "CODE_REVIEW",
-  "IDLE"
+  "IDLE",
+  "CUSTOM_EVENT"
 ] as const;
 
 export const EVENT_TYPES = Object.freeze({
@@ -12,8 +12,8 @@ export const EVENT_TYPES = Object.freeze({
   TASK_RUNNING: "TASK_RUNNING",
   TASK_SUCCESS: "TASK_SUCCESS",
   TASK_ERROR: "TASK_ERROR",
-  CODE_REVIEW: "CODE_REVIEW",
-  IDLE: "IDLE"
+  IDLE: "IDLE",
+  CUSTOM_EVENT: "CUSTOM_EVENT"
 } as const);
 
 export type KnownEventType = (typeof KNOWN_EVENT_TYPES)[number];

@@ -1,26 +1,34 @@
 import { PetAction } from "./PetAction.js";
-import type { PetState } from "../types/PetState.js";
 import type { PetCharacterDefinition } from "../types/RuntimeTypes.js";
+import type { BehaviorSlot } from "../types/BehaviorSlot.js";
 
 export class PetCharacter {
   readonly id: string;
   readonly name: string;
-  readonly states: Readonly<Partial<Record<PetState, string>>>;
+  readonly version: string;
   readonly actions: ReadonlyMap<string, PetAction>;
+  readonly behaviorMapping: Readonly<Partial<Record<BehaviorSlot, string>>>;
 
-  constructor({ id, name, actions, states = {}, assetBase }: PetCharacterDefinition) {
-    if (!id || !name || !actions || typeof actions !== "object") {
-      throw new TypeError("PetCharacter requires id, name and actions");
+  constructor({ id, name, version, actions, assets, behaviorMapping = {}, assetBase }: PetCharacterDefinition) {
+    if (!id || !name || !version || !Array.isArray(actions) || !assets) {
+      throw new TypeError("PetCharacter requires id, name, version, actions and assets");
     }
 
     this.id = id;
     this.name = name;
-    this.states = Object.freeze({ ...states });
+    this.version = version;
+    this.behaviorMapping = Object.freeze({ ...behaviorMapping });
     this.actions = new Map(
-      Object.entries(actions).map(([actionId, file]) => [
-        actionId,
-        new PetAction({ id: actionId, file, characterId: id, assetBase })
-      ])
+      actions.map((actionId) => {
+        const definition = assets[actionId];
+        if (!definition) {
+          throw new TypeError(`Character "${id}" action "${actionId}" has no asset definition`);
+        }
+        return [
+          actionId,
+          new PetAction({ id: actionId, asset: definition.asset, characterId: id, assetBase })
+        ];
+      })
     );
   }
 
@@ -30,14 +38,6 @@ export class PetCharacter {
       throw new RangeError(`Unknown action "${actionId}" for character "${this.id}"`);
     }
     return action;
-  }
-
-  actionForState(state: PetState): PetAction {
-    const actionId = this.states[state] ?? this.states.IDLE;
-    if (!actionId) {
-      throw new RangeError(`Character "${this.id}" has no mapping for state "${state}" or IDLE`);
-    }
-    return this.getAction(actionId);
   }
 
   listActions(): string[] {

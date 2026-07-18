@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { BehaviorResolver } from "../../behavior/BehaviorResolver.js";
 import { MockEventCollector } from "../../../collectors/mock/MockEventCollector.js";
 import { EventBus } from "../../events/EventBus.js";
-import { EventNormalizer } from "../../events/EventNormalizer.js";
 import { BehaviorScheduler } from "../../runtime/BehaviorScheduler.js";
 import { PetBehaviorEngine } from "../../runtime/PetBehaviorEngine.js";
 import { PetEventAdapter } from "../../runtime/PetEventAdapter.js";
-import type { PetState } from "../../types/PetState.js";
+import type { BehaviorSlot } from "../../types/BehaviorSlot.js";
+import type { PetAction } from "../../types/PetAction.js";
 import type {
   BehaviorRulesConfig,
   EventMapping,
@@ -19,18 +20,24 @@ interface IntegrationManager extends PetManagerLike {
 }
 
 function createManager(): IntegrationManager {
-  const actionsByState: Record<PetState, string> = {
+  const actionsBySlot: Record<BehaviorSlot, string> = {
     IDLE: "idle",
-    THINKING: "sharingan",
-    EXECUTING: "chidori",
-    REVIEWING: "code-review",
-    SUCCESS: "susanoo",
-    ERROR: "crow-dissolve"
+    THINKING: "thinking",
+    EXECUTING: "working",
+    SUCCESS: "celebrate",
+    ERROR: "danger"
   };
+  const actionFor = (characterId: string, actionId: string): PetAction => ({
+    id: actionId,
+    asset: `${actionId}.asset`,
+    characterId,
+    assetBase: "/assets",
+    src: `/assets/${characterId}/${actionId}.asset`
+  });
   const characterFor = (id: string): PetCharacterLike => ({
     id,
-    actionForState(state) {
-      return { id: actionsByState[state] };
+    getAction(actionId) {
+      return actionFor(id, actionId);
     }
   });
   return {
@@ -41,18 +48,21 @@ function createManager(): IntegrationManager {
       this.character = characterFor(characterId);
       this.calls.push(["character", characterId]);
     },
-    async changeState(state) {
-      this.stateMachine.state = state;
-      this.calls.push(["state", state]);
+    async changeBehavior(slot) {
+      this.stateMachine.state = slot;
+      this.calls.push(["behavior", slot]);
     },
     async changeAction(actionId) {
       this.calls.push(["action", actionId]);
+    },
+    resolveAction(slot) {
+      return this.character.getAction(actionsBySlot[slot]);
     }
   };
 }
 
 const mapping = {
-  task_success: { state: "SUCCESS" }
+  TASK_SUCCESS: "SUCCESS"
 } satisfies EventMapping;
 
 const rules = {
@@ -61,8 +71,7 @@ const rules = {
     SUCCESS: 80
   },
   events: {
-    task_success: {
-      state: "SUCCESS",
+    TASK_SUCCESS: {
       duration: 3000,
       recover: "IDLE"
     }
@@ -72,22 +81,26 @@ const rules = {
   }
 } satisfies BehaviorRulesConfig;
 
-test("TASK_SUCCESS reaches the existing Adapter and Behavior Engine", async () => {
+test("TASK_SUCCESS reaches Behavior Slot without selecting a character", async () => {
   const manager = createManager();
-  const adapter = new PetEventAdapter({ petManager: manager, mapping });
+  const behaviorResolver = new BehaviorResolver(mapping);
+  const adapter = new PetEventAdapter({ petManager: manager, behaviorResolver });
   const scheduler = new BehaviorScheduler({
     setTimer: () => 1,
     clearTimer: () => undefined
   });
-  const behaviorEngine = new PetBehaviorEngine({ petManager: manager, rules, scheduler });
-  const normalizer = new EventNormalizer();
+  const behaviorEngine = new PetBehaviorEngine({
+    petManager: manager,
+    rules,
+    behaviorResolver,
+    scheduler
+  });
   const bus = new EventBus();
-  const collector = new MockEventCollector(normalizer);
+  const collector = new MockEventCollector();
   collector.onEvent((event) => bus.publish(event));
   bus.subscribe(async (event) => {
-    const runtimeMessage = normalizer.toRuntimeMessage(event);
-    await adapter.handle(runtimeMessage);
-    await behaviorEngine.handleEvent(runtimeMessage);
+    await adapter.handle(event);
+    await behaviorEngine.handleEvent(event);
   });
 
   await collector.start();
@@ -98,7 +111,9 @@ test("TASK_SUCCESS reaches the existing Adapter and Behavior Engine", async () =
   });
   await collector.stop();
 
+  assert.equal(manager.character.id, "sasuke");
   assert.equal(manager.stateMachine.state, "SUCCESS");
-  assert.equal(behaviorEngine.getCurrentBehavior().event, "task_success");
-  assert.equal(behaviorEngine.getCurrentBehavior().state, "SUCCESS");
+  assert.equal(behaviorEngine.getCurrentBehavior().event, "TASK_SUCCESS");
+  assert.equal(behaviorEngine.getCurrentBehavior().slot, "SUCCESS");
+  assert.equal(manager.calls.some(([kind]) => kind === "character"), false);
 });
