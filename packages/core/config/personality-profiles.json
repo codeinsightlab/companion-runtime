@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "defaultMood": "normal",
+  "moods": ["normal", "focused", "excited", "alert", "sleepy"],
+  "characters": {
+    "sasuke": {
+      "style": "calm",
+      "mood": "normal",
+      "description": "Calm, efficient, analytical ninja companion.",
+      "keywords": ["calm", "efficient", "analytical"],
+      "actionPreferences": {
+        "SUCCESS": [
+          {
+            "action": "susanoo",
+            "weight": 80
+          },
+          {
+            "action": "code-focus",
+            "weight": 20
+          }
+        ],
+        "ERROR": [
+          {
+            "action": "code-focus",
+            "weight": 100
+          }
+        ]
+      }
+    },
+    "naruto": {
+      "style": "energetic",
+      "mood": "normal",
+      "description": "Energetic, encouraging, celebration-first ninja companion.",
+      "keywords": ["energetic", "celebratory", "encouraging"],
+      "actionPreferences": {
+        "SUCCESS": [
+          {
+            "action": "big-rasengan",
+            "weight": 70
+          },
+          {
+            "action": "shadow-clone",
+            "weight": 30
+          }
+        ],
+        "EXECUTING": [
+          {
+            "action": "rasenshuriken",
+            "weight": 80
+          },
+          {
+            "action": "code-focus",
+            "weight": 20
+          }
+        ]
+      }
+    },
+    "itachi": {
+      "style": "silent",
+      "mood": "normal",
+      "description": "Silent, observant, review-oriented ninja companion.",
+      "keywords": ["silent", "insightful", "reviewing"],
+      "actionPreferences": {
+        "REVIEWING": [
+          {
+            "action": "sharingan",
+            "weight": 100
+          }
+        ],
+        "SUCCESS": [
+          {
+            "action": "susanoo",
+            "weight": 100
+          }
+        ],
+        "ERROR": [
+          {
+            "action": "crow-dissolve",
+            "weight": 100
+          }
+        ]
+      }
+    }
+  }
+}

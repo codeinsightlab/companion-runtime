@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "priorities": {
+    "IDLE": 0,
+    "THINKING": 20,
+    "EXECUTING": 40,
+    "REVIEWING": 60,
+    "SUCCESS": 80,
+    "ERROR": 100
+  },
+  "events": {
+    "task_start": {
+      "state": "THINKING"
+    },
+    "task_running": {
+      "state": "EXECUTING"
+    },
+    "code_review": {
+      "character": "itachi",
+      "state": "REVIEWING"
+    },
+    "task_success": {
+      "state": "SUCCESS",
+      "duration": 3000,
+      "recover": "IDLE"
+    },
+    "task_error": {
+      "character": "itachi",
+      "state": "ERROR",
+      "duration": 5000,
+      "recover": "IDLE"
+    }
+  },
+  "cooldown": {
+    "SUCCESS": 5000
+  },
+  "idle": {
+    "enabled": true,
+    "timeout": 30000,
+    "idleActions": [
+      {
+        "state": "IDLE",
+        "weight": 80
+      },
+      {
+        "actionByCharacter": {
+          "sasuke": "code-focus",
+          "naruto": "code-focus",
+          "itachi": "code-review"
+        },
+        "weight": 20
+      }
+    ]
+  }
+}

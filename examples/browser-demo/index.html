@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ninja Pet Runtime Demo</title>
+    <link rel="stylesheet" href="../../packages/core/runtime/pet-runtime.css" />
+    <link rel="stylesheet" href="./demo.css" />
+  </head>
+  <body>
+    <main class="demo-shell">
+      <p class="eyebrow">PET RUNTIME / STANDALONE DEMO</p>
+      <h1>Ninja Pet Runtime</h1>
+      <p class="lead">独立状态机、配置驱动角色映射与轻量图片过渡。此页面仅用于验证运行层。</p>
+
+      <section class="control-panel" aria-label="Pet runtime controls">
+        <label>
+          角色
+          <select id="character"></select>
+        </label>
+
+        <label>
+          状态
+          <select id="state"></select>
+        </label>
+
+        <label>
+          直接动作
+          <select id="action"></select>
+        </label>
+
+        <label>
+          位置
+          <select id="position">
+            <option value="bottom-right">右下</option>
+            <option value="bottom-left">左下</option>
+            <option value="top-right">右上</option>
+            <option value="top-left">左上</option>
+          </select>
+        </label>
+
+        <label>
+          尺寸
+          <input id="size" type="range" min="64" max="256" value="128" step="8" />
+          <output id="size-output">128px</output>
+        </label>
+
+        <div class="button-row">
+          <button id="show" type="button">显示宠物</button>
+          <button id="hide" type="button" class="secondary">隐藏宠物</button>
+        </div>
+      </section>
+
+      <section class="event-panel" aria-label="Pet event adapter controls">
+        <div>
+          <p class="panel-kicker">EVENT ADAPTER</p>
+          <h2>外部事件映射</h2>
+          <p>按钮发送统一事件对象，由配置决定角色与状态。</p>
+        </div>
+        <div class="event-buttons">
+          <button type="button" data-pet-event="task_start">Task Start</button>
+          <button type="button" data-pet-event="task_running">Running</button>
+          <button type="button" data-pet-event="code_review">Code Review</button>
+          <button type="button" data-pet-event="task_success">Success</button>
+          <button type="button" data-pet-event="task_error">Error</button>
+        </div>
+      </section>
+
+      <section class="event-panel behavior-panel" aria-label="Pet behavior engine controls">
+        <div>
+          <p class="panel-kicker">BEHAVIOR ENGINE</p>
+          <h2>生命周期行为</h2>
+          <p>按钮经过优先级、冷却和恢复调度后再驱动宠物。</p>
+        </div>
+        <div class="event-buttons">
+          <button type="button" data-behavior-event="task_start">Task Start</button>
+          <button type="button" data-behavior-event="task_running">Running</button>
+          <button type="button" data-behavior-event="code_review">Code Review</button>
+          <button type="button" data-behavior-event="task_success">Success</button>
+          <button type="button" data-behavior-event="task_error">Error</button>
+          <button id="idle-mode" type="button" class="secondary">Idle Mode</button>
+        </div>
+      </section>
+
+      <section class="event-panel personality-panel" aria-label="Pet personality engine controls">
+        <div>
+          <p class="panel-kicker">PERSONALITY ENGINE</p>
+          <h2>角色人格选择</h2>
+          <p>同一行为会根据角色人格选择不同展示动作。</p>
+        </div>
+        <div class="event-buttons">
+          <button type="button" data-personality-character="sasuke" data-personality-event="task_success">Sasuke Success</button>
+          <button type="button" data-personality-character="naruto" data-personality-event="task_success">Naruto Success</button>
+          <button type="button" data-personality-character="itachi" data-personality-event="code_review">Itachi Review</button>
+          <button type="button" data-personality-character="itachi" data-personality-event="task_error">Itachi Error</button>
+        </div>
+      </section>
+
+      <section class="status-card" aria-live="polite">
+        <span>Runtime state</span>
+        <strong id="runtime-status">Loading…</strong>
+      </section>
+
+      <section class="status-card" aria-live="polite">
+        <span>Behavior state</span>
+        <strong id="behavior-status">Loading…</strong>
+      </section>
+
+      <section class="status-card" aria-live="polite">
+        <span>Personality state</span>
+        <strong id="personality-status">Loading…</strong>
+      </section>
+    </main>
+
+    <script type="module" src="./demo.js?v=personality-v1"></script>
+  </body>
+</html>

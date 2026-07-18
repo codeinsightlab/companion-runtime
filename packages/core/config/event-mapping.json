@@ -1,0 +1,19 @@
+{
+  "task_start": {
+    "state": "THINKING"
+  },
+  "task_running": {
+    "state": "EXECUTING"
+  },
+  "code_review": {
+    "character": "itachi",
+    "state": "REVIEWING"
+  },
+  "task_success": {
+    "state": "SUCCESS"
+  },
+  "task_error": {
+    "character": "itachi",
+    "state": "ERROR"
+  }
+}

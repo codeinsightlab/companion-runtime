@@ -1,0 +1,25 @@
+{
+  "name": "companion-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Framework for AI application companions with runtime state, behavior, personality, and character packs.",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "node scripts/build.mjs",
+    "test": "npm run build --silent && node --test dist/packages/core/tests/*.test.js dist/packages/core/tests/events/*.test.js",
+    "demo": "npm run build --silent && python3 -m http.server 4173 --directory dist"
+  },
+  "keywords": [
+    "companion",
+    "runtime",
+    "ai",
+    "pet",
+    "chibi"
+  ],
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^7.0.2"
+  }
+}
