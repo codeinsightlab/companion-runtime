@@ -21,7 +21,7 @@ export function createDesktopWindow(mode: DesktopMode): BrowserWindow {
     maximizable: false,
     minimizable: false,
     fullscreenable: false,
-    skipTaskbar: true,
+    skipTaskbar: false,
     hasShadow: false,
     show: false,
     webPreferences: {

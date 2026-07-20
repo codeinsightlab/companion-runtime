@@ -10,6 +10,11 @@ import type {
   RuntimeCoordinator
 } from "../src/lifecycle/DesktopLifecycleManager.js";
 import { acquireSingleInstanceLock } from "../src/lifecycle/singleInstance.js";
+import {
+  COMPANION_APPLICATION_NAME,
+  createMacApplicationMenuTemplate,
+  installMacApplicationIdentity
+} from "../src/macos/ApplicationIdentity.js";
 import { WindowManager } from "../src/window/WindowManager.js";
 import type { PetWindow, WindowCloseEvent } from "../src/window/WindowManager.js";
 
@@ -116,6 +121,68 @@ test("single instance lock rejects a second Desktop initialization", () => {
   assert.equal(quits, 0);
   assert.equal(acquireSingleInstanceLock({ requestSingleInstanceLock: () => false, quit: () => { quits += 1; } }), false);
   assert.equal(quits, 1);
+});
+
+test("macOS identity installs Companion name, regular Dock policy, and application menu", async () => {
+  const calls: string[] = [];
+  let installedMenu: unknown;
+  const templateMarker = {};
+
+  await installMacApplicationIdentity({
+    application: {
+      dock: { show: async () => { calls.push("dock-show"); } },
+      setActivationPolicy: (policy) => { calls.push(`policy:${policy}`); },
+      setName: (name) => { calls.push(`name:${name}`); },
+      whenReady: async () => { calls.push("ready"); }
+    },
+    menu: {
+      buildFromTemplate: (template) => {
+        calls.push(`menu-build:${template[0]?.label}`);
+        return templateMarker;
+      },
+      setApplicationMenu: (menu) => {
+        installedMenu = menu;
+        calls.push("menu-install");
+      }
+    },
+    requestQuit: async () => {}
+  });
+
+  assert.deepEqual(calls, [
+    `name:${COMPANION_APPLICATION_NAME}`,
+    "ready",
+    "policy:regular",
+    "dock-show",
+    `menu-build:${COMPANION_APPLICATION_NAME}`,
+    "menu-install"
+  ]);
+  assert.equal(installedMenu, templateMarker);
+});
+
+test("Application Menu Quit delegates to DesktopLifecycleManager requestQuit", async () => {
+  let requestQuitCalls = 0;
+  const template = createMacApplicationMenuTemplate(async () => {
+    requestQuitCalls += 1;
+  });
+  const applicationMenu = template[0];
+  assert.ok(Array.isArray(applicationMenu?.submenu));
+  const quitItem = applicationMenu.submenu.find((item) => item.label === "Quit Companion");
+  assert.equal(typeof quitItem?.click, "function");
+
+  quitItem?.click?.({} as never, undefined, {} as never);
+  await Promise.resolve();
+  assert.equal(requestQuitCalls, 1);
+});
+
+test("macOS Window menu preserves Cmd+W close-to-hide routing", () => {
+  const template = createMacApplicationMenuTemplate(async () => {});
+  const windowMenu = template.find((item) => item.label === "Window");
+  assert.ok(Array.isArray(windowMenu?.submenu));
+  assert.deepEqual(windowMenu.submenu[0], {
+    label: "Close",
+    accelerator: "Command+W",
+    role: "close"
+  });
 });
 
 test("WindowManager owns one pet window and converts close to hide", () => {
