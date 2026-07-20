@@ -20,13 +20,16 @@ export class ExternalEventMapper {
     const target = this.#mapping[key];
     if (!target) throw new RangeError(`No Internal Event mapping for External Event "${key}"`);
 
+    const platform = typeof event.payload.platform === "string"
+      ? event.payload.platform
+      : "external";
     return {
       id: event.id,
       event: target.type,
       ...(target.name ? { name: target.name } : {}),
       source: {
         app: event.source,
-        platform: "external-listener",
+        platform,
         collector: event.source
       },
       payload: { ...event.payload, externalEventName: event.name },

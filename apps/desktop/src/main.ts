@@ -1,45 +1,17 @@
-import { app, BrowserWindow, ipcMain } from "electron";
-import { loadDesktopRuntimeConfiguration } from "./config.js";
-import { createDesktopWindow } from "./window.js";
-import { ListenerManager } from "../../../packages/listeners/core/ListenerManager.js";
-import { MacSystemListener } from "../../../packages/listeners/system/macos/MacSystemListener.js";
+import { app } from "electron";
+import { createDesktopLifecycleManager } from "./lifecycle/createDesktopLifecycleManager.js";
+import type { DesktopMode } from "./window.js";
+import { acquireSingleInstanceLock } from "./lifecycle/singleInstance.js";
 
-const listenerManager = new ListenerManager();
+const hasSingleInstanceLock = acquireSingleInstanceLock(app);
 
-if (process.platform === "darwin") {
-  const systemListener = new MacSystemListener();
-  systemListener.onEvent((event) => {
-    for (const window of BrowserWindow.getAllWindows()) {
-      window.webContents.send("companion:external-event", event);
-    }
+if (hasSingleInstanceLock) {
+  const mode: DesktopMode = process.env.COMPANION_DESKTOP_MODE === "production"
+    ? "production"
+    : "development";
+  const lifecycleManager = createDesktopLifecycleManager(mode);
+  lifecycleManager.start().catch((error: unknown) => {
+    console.error("Unable to start Companion Desktop", error);
+    void lifecycleManager.requestQuit();
   });
-  listenerManager.register(systemListener);
 }
-
-ipcMain.handle("companion:load-runtime-configuration", () => loadDesktopRuntimeConfiguration());
-
-app.whenReady().then(() => {
-  const window = createDesktopWindow();
-  window.webContents.once("did-finish-load", () => {
-    listenerManager.startAll().catch((error: unknown) => {
-      console.error("Unable to start Desktop Listeners", error);
-    });
-  });
-}).catch((error: unknown) => {
-  console.error("Unable to start Companion Desktop", error);
-  app.quit();
-});
-
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) createDesktopWindow();
-});
-
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
-});
-
-app.on("before-quit", () => {
-  listenerManager.stopAll().catch((error: unknown) => {
-    console.error("Unable to stop Desktop Listeners", error);
-  });
-});

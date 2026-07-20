@@ -1,11 +1,14 @@
-import { cpus, freemem, totalmem } from "node:os";
+import { cpus } from "node:os";
 import { createExternalEvent } from "../../core/ExternalEvent.js";
-import type { ExternalEventHandler } from "../../core/Listener.js";
-import type { SystemListener } from "../SystemListener.js";
+import { BaseListener } from "../../core/BaseListener.js";
+import { MacMemoryPressureAdapter } from "./MacMemoryPressureAdapter.js";
+import type {
+  MemoryPressureAdapter,
+  MemoryPressureLevel
+} from "./MacMemoryPressureAdapter.js";
 
 export interface SystemMetrics {
   readonly cpuUsage: number;
-  readonly memoryUsage: number;
 }
 
 export interface SystemMetricsProvider {
@@ -27,9 +30,7 @@ export class MacSystemMetricsProvider implements SystemMetricsProvider {
     const totalDelta = previous ? current.total - previous.total : 0;
     const idleDelta = previous ? current.idle - previous.idle : 0;
     const cpuUsage = totalDelta > 0 ? ((totalDelta - idleDelta) / totalDelta) * 100 : 0;
-    const totalMemory = totalmem();
-    const memoryUsage = totalMemory > 0 ? ((totalMemory - freemem()) / totalMemory) * 100 : 0;
-    return { cpuUsage, memoryUsage };
+    return { cpuUsage };
   }
 
   #readCpuTotals(): CpuTotals {
@@ -46,71 +47,114 @@ export class MacSystemMetricsProvider implements SystemMetricsProvider {
 export interface MacSystemListenerOptions {
   readonly intervalMs?: number;
   readonly cpuThreshold?: number;
-  readonly memoryThreshold?: number;
+  readonly cpuSustainMs?: number;
   readonly metricsProvider?: SystemMetricsProvider;
+  readonly memoryPressureAdapter?: MemoryPressureAdapter;
+  readonly now?: () => number;
 }
 
-export class MacSystemListener implements SystemListener {
+export class MacSystemListener extends BaseListener {
   readonly id = "macos-system";
   readonly #intervalMs: number;
   readonly #cpuThreshold: number;
-  readonly #memoryThreshold: number;
+  readonly #cpuSustainMs: number;
   readonly #metricsProvider: SystemMetricsProvider;
-  readonly #handlers = new Set<ExternalEventHandler>();
+  readonly #memoryPressureAdapter: MemoryPressureAdapter;
+  readonly #now: () => number;
   #timer?: ReturnType<typeof setInterval>;
-  #cpuHigh = false;
-  #memoryHigh = false;
+  #cpuHighSince?: number;
+  #cpuEventEmitted = false;
+  #memoryLevel: MemoryPressureLevel = "normal";
 
   constructor(options: MacSystemListenerOptions = {}) {
+    super();
     this.#intervalMs = options.intervalMs ?? 5_000;
     this.#cpuThreshold = options.cpuThreshold ?? 90;
-    this.#memoryThreshold = options.memoryThreshold ?? 90;
+    this.#cpuSustainMs = options.cpuSustainMs ?? 10_000;
     this.#metricsProvider = options.metricsProvider ?? new MacSystemMetricsProvider();
+    this.#memoryPressureAdapter = options.memoryPressureAdapter ?? new MacMemoryPressureAdapter();
+    this.#now = options.now ?? Date.now;
     if (this.#intervalMs <= 0) throw new RangeError("MacSystemListener intervalMs must be positive");
+    if (this.#cpuSustainMs < 0) throw new RangeError("MacSystemListener cpuSustainMs cannot be negative");
     this.#validateThreshold(this.#cpuThreshold, "cpuThreshold");
-    this.#validateThreshold(this.#memoryThreshold, "memoryThreshold");
   }
 
-  async start(): Promise<void> {
-    if (this.#timer) return;
-    this.sampleNow();
-    this.#timer = setInterval(() => this.sampleNow(), this.#intervalMs);
+  protected async onStart(generation: number): Promise<void> {
+    await this.sampleExclusive(generation, () => this.#collect(generation));
+    if (!this.isActive(generation)) return;
+    this.#timer = setInterval(() => {
+      void this.sampleExclusive(generation, () => this.#collect(generation))
+        .catch((error: unknown) => this.#reportError(error));
+    }, this.#intervalMs);
   }
 
-  async stop(): Promise<void> {
+  protected async onStop(): Promise<void> {
     if (this.#timer) clearInterval(this.#timer);
     this.#timer = undefined;
-    this.#cpuHigh = false;
-    this.#memoryHigh = false;
+    this.#memoryPressureAdapter.cancel();
+    this.#cpuHighSince = undefined;
+    this.#cpuEventEmitted = false;
+    this.#memoryLevel = "normal";
   }
 
-  onEvent(handler: ExternalEventHandler): void {
-    this.#handlers.add(handler);
+  protected async onDestroy(): Promise<void> {
+    await this.#memoryPressureAdapter.destroy();
   }
 
-  sampleNow(): void {
+  sampleNow(): Promise<boolean> {
+    const generation = this.currentGeneration;
+    return this.sampleExclusive(generation, () => this.#collect(generation));
+  }
+
+  async #collect(generation: number): Promise<void> {
+    if (!this.isActive(generation)) return;
     const metrics = this.#metricsProvider.sample();
-    const cpuHigh = metrics.cpuUsage >= this.#cpuThreshold;
-    const memoryHigh = metrics.memoryUsage >= this.#memoryThreshold;
-
-    if (cpuHigh && !this.#cpuHigh) {
-      this.#emit("cpu_high", { usage: metrics.cpuUsage, threshold: this.#cpuThreshold });
+    this.#processCpu(metrics.cpuUsage);
+    const pressure = await this.#memoryPressureAdapter.sample();
+    if (!this.isActive(generation)) return;
+    if (pressure.level !== "normal" && pressure.level !== this.#memoryLevel) {
+      this.#emit("memory_pressure", {
+        platform: "macos",
+        level: pressure.level,
+        freePercentage: pressure.freePercentage
+      }, generation);
     }
-    if (memoryHigh && !this.#memoryHigh) {
-      this.#emit("memory_pressure", { usage: metrics.memoryUsage, threshold: this.#memoryThreshold });
-    }
-    this.#cpuHigh = cpuHigh;
-    this.#memoryHigh = memoryHigh;
+    this.#memoryLevel = pressure.level;
   }
 
-  #emit(name: string, payload: Record<string, unknown>): void {
+  #processCpu(usage: number): void {
+    if (usage < this.#cpuThreshold) {
+      this.#cpuHighSince = undefined;
+      this.#cpuEventEmitted = false;
+      return;
+    }
+
+    const now = this.#now();
+    this.#cpuHighSince ??= now;
+    const durationMs = now - this.#cpuHighSince;
+    if (!this.#cpuEventEmitted && durationMs >= this.#cpuSustainMs) {
+      this.#emit("cpu_high", {
+        platform: "macos",
+        usage,
+        threshold: this.#cpuThreshold,
+        durationMs
+      }, this.currentGeneration);
+      this.#cpuEventEmitted = true;
+    }
+  }
+
+  #emit(name: string, payload: Record<string, unknown>, generation: number): void {
     const event = createExternalEvent({ source: "system", name, payload });
-    for (const handler of this.#handlers) handler(event);
+    this.emitIfActive(event, generation);
   }
 
   #validateThreshold(value: number, name: string): void {
     if (!Number.isFinite(value) || value < 0 || value > 100) {
       throw new RangeError(`MacSystemListener ${name} must be between 0 and 100`);
     }
+  }
+
+  #reportError(error: unknown): void {
+    console.error("MacSystemListener sampling failed", error);
   }
 }

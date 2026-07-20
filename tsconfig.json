@@ -14,6 +14,7 @@
   },
   "include": [
     "apps/desktop/src/**/*",
+    "apps/desktop/tests/**/*.ts",
     "packages/collectors/**/*.ts",
     "packages/listeners/**/*.ts",
     "packages/core/bootstrap/**/*.ts",

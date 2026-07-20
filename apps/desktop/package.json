@@ -6,6 +6,7 @@
   "main": "../../dist/apps/desktop/src/main.js",
   "scripts": {
     "build": "npm --prefix ../.. run build",
-    "start": "npm run build --silent && ../../node_modules/.bin/electron ../../dist/apps/desktop/src/main.js"
+    "start": "npm run build --silent && ../../node_modules/.bin/electron ../../dist/apps/desktop/src/main.js",
+    "start:production": "npm run build --silent && COMPANION_DESKTOP_MODE=production ../../node_modules/.bin/electron ../../dist/apps/desktop/src/main.js"
   }
 }

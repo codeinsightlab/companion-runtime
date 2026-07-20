@@ -4,8 +4,9 @@ import { fileURLToPath } from "node:url";
 const WINDOW_WIDTH = 280;
 const WINDOW_HEIGHT = 240;
 const SCREEN_MARGIN = 16;
+export type DesktopMode = "development" | "production";
 
-export function createDesktopWindow(): BrowserWindow {
+export function createDesktopWindow(mode: DesktopMode): BrowserWindow {
   const { workArea } = screen.getPrimaryDisplay();
   const window = new BrowserWindow({
     width: WINDOW_WIDTH,
@@ -27,7 +28,8 @@ export function createDesktopWindow(): BrowserWindow {
       preload: fileURLToPath(new URL("./preload.cjs", import.meta.url)),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      additionalArguments: [`--companion-mode=${mode}`]
     }
   });
 

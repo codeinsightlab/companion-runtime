@@ -13,6 +13,15 @@ body {
   background: transparent;
 }
 
+body[data-mode="production"] .development-only {
+  display: none;
+}
+
+body[data-mode="production"] #pet-stage .ninja-pet {
+  right: 76px;
+  bottom: 54px;
+}
+
 .desktop-shell {
   position: relative;
   width: 100%;

@@ -7,10 +7,11 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "node scripts/build.mjs",
-    "test": "npm run build --silent && node --test dist/packages/core/tests/*.test.js dist/packages/core/tests/events/*.test.js dist/packages/listeners/tests/*.test.js",
+    "test": "npm run build --silent && node --test dist/packages/core/tests/*.test.js dist/packages/core/tests/events/*.test.js dist/packages/listeners/tests/*.test.js dist/apps/desktop/tests/*.test.js",
     "demo": "npm run build --silent && python3 -m http.server 4173 --directory dist",
     "desktop:build": "npm --prefix apps/desktop run build",
-    "desktop:start": "npm --prefix apps/desktop start"
+    "desktop:start": "npm --prefix apps/desktop start",
+    "desktop:start:production": "npm --prefix apps/desktop run start:production"
   },
   "keywords": [
     "companion",

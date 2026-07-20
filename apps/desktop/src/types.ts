@@ -22,5 +22,9 @@ export interface DesktopRuntimeConfiguration {
 
 export interface CompanionDesktopBridge {
   loadRuntimeConfiguration(): Promise<DesktopRuntimeConfiguration>;
+  getMode(): "development" | "production";
   onExternalEvent(handler: (event: ExternalEvent) => void): () => void;
+  onRuntimeStop(handler: () => void): () => void;
+  notifyRuntimeReady(): void;
+  notifyRuntimeError(message: string): void;
 }
