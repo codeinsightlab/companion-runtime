@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Companion 设置</title>
+    <link rel="stylesheet" href="./settings.css" />
+  </head>
+  <body>
+    <main class="settings-shell">
+      <header>
+        <p class="eyebrow">COMPANION</p>
+        <h1>桌宠设置</h1>
+        <p class="subtitle">管理当前角色、显示尺寸和桌宠窗口。</p>
+      </header>
+
+      <section class="setting-card">
+        <label for="character-select">当前宠物</label>
+        <select id="character-select" aria-describedby="character-help"></select>
+        <p id="character-help" class="hint">角色能力来自已安装的 Character Manifest。</p>
+      </section>
+
+      <section class="setting-card">
+        <span class="label">宠物大小</span>
+        <div class="segmented" role="group" aria-label="宠物大小">
+          <button type="button" data-pet-size="small">小</button>
+          <button type="button" data-pet-size="medium">中</button>
+          <button type="button" data-pet-size="large">大</button>
+        </div>
+      </section>
+
+      <section class="setting-card">
+        <span class="label">系统监听状态</span>
+        <dl class="listener-list">
+          <div><dt>CPU</dt><dd data-listener="cpu">读取中</dd></div>
+          <div><dt>内存</dt><dd data-listener="memory">读取中</dd></div>
+          <div><dt>电池</dt><dd data-listener="battery">读取中</dd></div>
+        </dl>
+      </section>
+
+      <section class="window-actions" aria-label="宠物窗口控制">
+        <button id="show-pet" type="button" class="primary">显示宠物</button>
+        <button id="hide-pet" type="button">隐藏宠物</button>
+      </section>
+
+      <output id="settings-status" aria-live="polite"></output>
+    </main>
+    <script type="module" src="./src/settings/settings.js"></script>
+  </body>
+</html>

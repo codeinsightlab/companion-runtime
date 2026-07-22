@@ -32,3 +32,11 @@ cpSync(
   resolve(projectRoot, "apps/desktop/desktop.css"),
   resolve(outputDirectory, "apps/desktop/desktop.css")
 );
+cpSync(
+  resolve(projectRoot, "apps/desktop/settings.html"),
+  resolve(outputDirectory, "apps/desktop/settings.html")
+);
+cpSync(
+  resolve(projectRoot, "apps/desktop/settings.css"),
+  resolve(outputDirectory, "apps/desktop/settings.css")
+);

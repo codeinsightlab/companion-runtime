@@ -1,8 +1,9 @@
-import type { CompanionDesktopBridge } from "./types.js";
+import type { CompanionDesktopBridge, CompanionSettingsBridge } from "./types.js";
 
 declare global {
   interface Window {
     companionDesktop: CompanionDesktopBridge;
+    companionSettings: CompanionSettingsBridge;
   }
 }
 

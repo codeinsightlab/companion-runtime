@@ -23,11 +23,23 @@ export interface RuntimeCoordinator<TWindow extends PetWindow> {
   sendExternalEvent(window: TWindow | undefined, event: ExternalEvent): boolean;
 }
 
+export interface DesktopTrayManager {
+  create(): boolean;
+  destroy(): void;
+}
+
+export interface DesktopSettingsCoordinator {
+  register(): void;
+  unregister(): void;
+}
+
 export interface DesktopLifecycleManagerOptions<TWindow extends PetWindow> {
   readonly application: DesktopApplication;
   readonly windowManager: WindowManager<TWindow>;
   readonly listenerManager: ListenerManager;
   readonly runtimeCoordinator: RuntimeCoordinator<TWindow>;
+  readonly trayManager?: DesktopTrayManager;
+  readonly settingsCoordinator?: DesktopSettingsCoordinator;
   readonly runtimeReadyTimeoutMs?: number;
   readonly runtimeStopTimeoutMs?: number;
   readonly reportError?: (message: string, error: unknown) => void;
@@ -38,6 +50,8 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
   readonly #windowManager: WindowManager<TWindow>;
   readonly #listenerManager: ListenerManager;
   readonly #runtimeCoordinator: RuntimeCoordinator<TWindow>;
+  readonly #trayManager?: DesktopTrayManager;
+  readonly #settingsCoordinator?: DesktopSettingsCoordinator;
   readonly #runtimeReadyTimeoutMs: number;
   readonly #runtimeStopTimeoutMs: number;
   readonly #reportError: (message: string, error: unknown) => void;
@@ -50,6 +64,8 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
     windowManager,
     listenerManager,
     runtimeCoordinator,
+    trayManager,
+    settingsCoordinator,
     runtimeReadyTimeoutMs = 5_000,
     runtimeStopTimeoutMs = 2_000,
     reportError = console.error
@@ -58,6 +74,8 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
     this.#windowManager = windowManager;
     this.#listenerManager = listenerManager;
     this.#runtimeCoordinator = runtimeCoordinator;
+    this.#trayManager = trayManager;
+    this.#settingsCoordinator = settingsCoordinator;
     this.#runtimeReadyTimeoutMs = runtimeReadyTimeoutMs;
     this.#runtimeStopTimeoutMs = runtimeStopTimeoutMs;
     this.#reportError = reportError;
@@ -72,9 +90,11 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
     this.#started = true;
     this.#registerApplicationEvents();
     this.#runtimeCoordinator.register();
+    this.#settingsCoordinator?.register();
     await this.#application.whenReady();
     if (this.isQuitting) return;
 
+    this.#trayManager?.create();
     const window = this.#windowManager.createPetWindow();
     await this.#runtimeCoordinator.waitForReady(window, this.#runtimeReadyTimeoutMs);
     try {
@@ -95,6 +115,12 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
     this.#windowManager.hidePetWindow();
   }
 
+  showSettings(): void {
+    if (this.isQuitting) return;
+    this.#windowManager.showSettingsWindow();
+    this.#windowManager.focusSettingsWindow();
+  }
+
   forwardExternalEvent(event: ExternalEvent): boolean {
     if (this.isQuitting) return false;
     return this.#runtimeCoordinator.sendExternalEvent(this.#windowManager.getPetWindow(), event);
@@ -108,6 +134,11 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
 
   async #shutdown(): Promise<void> {
     const window = this.#windowManager.getPetWindow();
+    try {
+      this.#trayManager?.destroy();
+    } catch (error) {
+      this.#reportError("Unable to destroy Desktop Tray", error);
+    }
     try {
       await this.#listenerManager.destroyAll();
     } catch (error) {
@@ -123,11 +154,12 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
     }
 
     try {
-      this.#windowManager.destroyPetWindow();
+      this.#windowManager.destroyAllWindows();
     } catch (error) {
       this.#reportError("Unable to destroy pet window", error);
     }
     this.#runtimeCoordinator.unregister();
+    this.#settingsCoordinator?.unregister();
     this.#unregisterApplicationEvents();
     this.#shutdownComplete = true;
     this.#application.quit();

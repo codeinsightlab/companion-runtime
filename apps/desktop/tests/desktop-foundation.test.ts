@@ -323,3 +323,44 @@ test("shutdown safely skips Runtime IPC when the pet window is already destroyed
   assert.equal(order.includes("runtime-stop"), false);
   assert.equal(application.quitCalls, 1);
 });
+
+test("Desktop control surface follows Tray startup and complete shutdown order", async () => {
+  const order: string[] = [];
+  const application = new FakeApplication();
+  const listenerManager = new ListenerManager();
+  listenerManager.register(new OrderedListener(order));
+  const pet = new FakeWindow();
+  const settings = new FakeWindow();
+  let lifecycle!: DesktopLifecycleManager<FakeWindow>;
+  const windowManager = new WindowManager({
+    createWindow: () => { order.push("pet-create"); return pet; },
+    createSettingsWindow: () => settings,
+    isQuitting: () => lifecycle.isQuitting
+  });
+  const runtimeCoordinator = new FakeRuntimeCoordinator(order);
+  lifecycle = new DesktopLifecycleManager({
+    application,
+    windowManager,
+    listenerManager,
+    runtimeCoordinator,
+    trayManager: {
+      create: () => { order.push("tray-create"); return true; },
+      destroy: () => { order.push("tray-destroy"); }
+    },
+    settingsCoordinator: {
+      register: () => { order.push("settings-ipc-register"); },
+      unregister: () => { order.push("settings-ipc-unregister"); }
+    }
+  });
+
+  await lifecycle.start();
+  lifecycle.showSettings();
+  assert.ok(order.indexOf("tray-create") < order.indexOf("pet-create"));
+  assert.ok(order.indexOf("pet-create") < order.indexOf("listener-start"));
+  await lifecycle.requestQuit();
+  assert.ok(order.indexOf("tray-destroy") < order.indexOf("listener-destroy"));
+  assert.ok(order.indexOf("listener-destroy") < order.indexOf("runtime-stop"));
+  assert.equal(settings.destroyed, true);
+  assert.equal(pet.destroyed, true);
+  assert.ok(order.indexOf("runtime-stopped") < order.indexOf("settings-ipc-unregister"));
+});

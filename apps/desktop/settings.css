@@ -1,0 +1,31 @@
+:root {
+  color-scheme: light;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #172033;
+  background: #f4f5f7;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: linear-gradient(155deg, #f8f9fb, #edf0f4); }
+.settings-shell { width: min(100%, 460px); margin: 0 auto; padding: 34px 30px 28px; }
+.eyebrow { margin: 0 0 7px; color: #667085; font-size: 11px; font-weight: 700; letter-spacing: .16em; }
+h1 { margin: 0; font-size: 28px; letter-spacing: -.02em; }
+.subtitle { margin: 8px 0 25px; color: #667085; font-size: 14px; }
+.setting-card { margin-bottom: 14px; padding: 17px; border: 1px solid #dfe3e8; border-radius: 14px; background: rgb(255 255 255 / 88%); box-shadow: 0 7px 22px rgb(18 31 53 / 5%); }
+label, .label { display: block; margin-bottom: 10px; font-size: 14px; font-weight: 650; }
+select { width: 100%; height: 38px; padding: 0 10px; border: 1px solid #cdd3dc; border-radius: 9px; background: white; color: inherit; font: inherit; }
+.hint { margin: 8px 0 0; color: #7b8494; font-size: 12px; }
+.segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+button { min-height: 38px; border: 1px solid #cdd3dc; border-radius: 9px; background: white; color: #344054; font: inherit; font-weight: 600; cursor: pointer; }
+button:hover { background: #f5f7fa; }
+button[aria-pressed="true"], button.primary { border-color: #253b62; background: #253b62; color: white; }
+.listener-list { margin: 0; }
+.listener-list div { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #edf0f3; }
+.listener-list div:last-child { border-bottom: 0; }
+.listener-list dt, .listener-list dd { margin: 0; font-size: 13px; }
+.listener-list dd { color: #4b6354; font-weight: 650; }
+.listener-list dd[data-state="error"] { color: #b42318; }
+.listener-list dd[data-state="unavailable"] { color: #7b8494; }
+.window-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
+#settings-status { display: block; min-height: 20px; margin-top: 12px; color: #667085; font-size: 12px; text-align: center; }
+#settings-status[data-error="true"] { color: #b42318; }

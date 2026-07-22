@@ -77,6 +77,15 @@ async function initializeDesktopRuntime(): Promise<void> {
       console.error("Unable to process External Event", error);
     });
   });
+  const unsubscribeCharacterChanged = window.companionDesktop.onCharacterChanged((characterId) => {
+    void context.petManager.changeCharacter(characterId).then(() => updateStatus(`CHARACTER:${characterId}`))
+      .catch((error: unknown) => {
+        window.companionDesktop.notifyRuntimeError(error instanceof Error ? error.message : String(error));
+      });
+  });
+  const unsubscribePetSizeChanged = window.companionDesktop.onPetSizeChanged((_petSize, pixels) => {
+    context.petManager.setSize(pixels);
+  });
 
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-event]")) {
     button.addEventListener("click", async () => {
@@ -94,6 +103,8 @@ async function initializeDesktopRuntime(): Promise<void> {
   context.behaviorEngine.addEventListener("recovered", () => updateStatus("RECOVERED"));
   window.addEventListener("beforeunload", () => {
     unsubscribeExternalEvents();
+    unsubscribeCharacterChanged();
+    unsubscribePetSizeChanged();
     unsubscribeRuntimeStop();
     context.runtime.stop();
   }, { once: true });

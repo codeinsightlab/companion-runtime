@@ -5,6 +5,8 @@ import type {
 } from "electron";
 import type { ExternalEvent } from "../../../../packages/listeners/core/ExternalEvent.js";
 import type { DesktopRuntimeConfiguration } from "../types.js";
+import type { PetSize } from "../preferences/DesktopPreferences.js";
+import { DESKTOP_CHANNELS } from "../ipc/channels.js";
 
 interface Waiter {
   readonly resolve: () => void;
@@ -36,19 +38,19 @@ export class RuntimeIpcCoordinator {
   register(): void {
     if (this.#registered) return;
     this.#registered = true;
-    this.#ipcMain.handle("companion:load-runtime-configuration", this.#loadConfiguration);
-    this.#ipcMain.on("companion:runtime-ready", this.#handleReady);
-    this.#ipcMain.on("companion:runtime-stopped", this.#handleStopped);
-    this.#ipcMain.on("companion:runtime-error", this.#handleError);
+    this.#ipcMain.handle(DESKTOP_CHANNELS.loadRuntimeConfiguration, this.#loadConfiguration);
+    this.#ipcMain.on(DESKTOP_CHANNELS.runtimeReady, this.#handleReady);
+    this.#ipcMain.on(DESKTOP_CHANNELS.runtimeStopped, this.#handleStopped);
+    this.#ipcMain.on(DESKTOP_CHANNELS.runtimeError, this.#handleError);
   }
 
   unregister(): void {
     if (!this.#registered) return;
     this.#registered = false;
-    this.#ipcMain.removeHandler("companion:load-runtime-configuration");
-    this.#ipcMain.removeListener("companion:runtime-ready", this.#handleReady);
-    this.#ipcMain.removeListener("companion:runtime-stopped", this.#handleStopped);
-    this.#ipcMain.removeListener("companion:runtime-error", this.#handleError);
+    this.#ipcMain.removeHandler(DESKTOP_CHANNELS.loadRuntimeConfiguration);
+    this.#ipcMain.removeListener(DESKTOP_CHANNELS.runtimeReady, this.#handleReady);
+    this.#ipcMain.removeListener(DESKTOP_CHANNELS.runtimeStopped, this.#handleStopped);
+    this.#ipcMain.removeListener(DESKTOP_CHANNELS.runtimeError, this.#handleError);
     this.#rejectWaiters(this.#readyWaiters, "Runtime IPC Coordinator was unregistered");
     this.#rejectWaiters(this.#stopWaiters, "Runtime IPC Coordinator was unregistered");
     this.#ready.clear();
@@ -65,13 +67,25 @@ export class RuntimeIpcCoordinator {
     if (!this.#canSend(window)) return Promise.resolve();
     const id = window.webContents.id;
     const waiting = this.#createWaiter(this.#stopWaiters, id, timeoutMs, "Runtime stop timed out");
-    window.webContents.send("companion:runtime-stop");
+    window.webContents.send(DESKTOP_CHANNELS.runtimeStop);
     return waiting;
   }
 
   sendExternalEvent(window: BrowserWindow | undefined, event: ExternalEvent): boolean {
     if (!window || !this.#canSend(window)) return false;
-    window.webContents.send("companion:external-event", event);
+    window.webContents.send(DESKTOP_CHANNELS.externalEvent, event);
+    return true;
+  }
+
+  sendCharacterChanged(window: BrowserWindow | undefined, characterId: string): boolean {
+    if (!window || !this.#canSend(window)) return false;
+    window.webContents.send(DESKTOP_CHANNELS.characterChanged, characterId);
+    return true;
+  }
+
+  sendPetSizeChanged(window: BrowserWindow | undefined, petSize: PetSize, pixels: number): boolean {
+    if (!window || !this.#canSend(window)) return false;
+    window.webContents.send(DESKTOP_CHANNELS.petSizeChanged, petSize, pixels);
     return true;
   }
 
