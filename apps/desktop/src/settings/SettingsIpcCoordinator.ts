@@ -4,7 +4,11 @@ import type { UserProfile } from "../../../../packages/core/profile/UserProfile.
 import type { DesktopRuntimeConfiguration } from "../types.js";
 import type { DesktopSettingsResult, DesktopSettingsSnapshot, ListenerDisplayState } from "../types.js";
 import { DESKTOP_CHANNELS } from "../ipc/channels.js";
-import { isPetSize, PET_SIZE_LAYOUT } from "../preferences/DesktopPreferences.js";
+import {
+  isMouseInteractionMode,
+  isPetSize,
+  PET_SIZE_LAYOUT
+} from "../preferences/DesktopPreferences.js";
 import type { PetSize } from "../preferences/DesktopPreferences.js";
 import type { DesktopPreferencesStore } from "../preferences/DesktopPreferencesStore.js";
 import type { DesktopUserProfileStore } from "../preferences/DesktopUserProfileStore.js";
@@ -52,6 +56,8 @@ export class SettingsIpcCoordinator {
       this.#handle(event, () => this.setCharacter(id)));
     this.#ipcMain.handle(DESKTOP_CHANNELS.settingsSetPetSize, (event, size: unknown) =>
       this.#handle(event, () => this.setPetSize(size)));
+    this.#ipcMain.handle(DESKTOP_CHANNELS.settingsSetMouseMode, (event, mode: unknown) =>
+      this.#handle(event, () => this.setMouseInteractionMode(mode)));
     this.#ipcMain.handle(DESKTOP_CHANNELS.settingsShowPet, (event) =>
       this.#handle(event, () => { this.#windowManager.showPetWindow(); this.#windowManager.focusPetWindow(); }));
     this.#ipcMain.handle(DESKTOP_CHANNELS.settingsHidePet, (event) =>
@@ -65,6 +71,7 @@ export class SettingsIpcCoordinator {
       DESKTOP_CHANNELS.settingsGetSnapshot,
       DESKTOP_CHANNELS.settingsSetCharacter,
       DESKTOP_CHANNELS.settingsSetPetSize,
+      DESKTOP_CHANNELS.settingsSetMouseMode,
       DESKTOP_CHANNELS.settingsShowPet,
       DESKTOP_CHANNELS.settingsHidePet
     ]) this.#ipcMain.removeHandler(channel);
@@ -73,16 +80,34 @@ export class SettingsIpcCoordinator {
   snapshot(): DesktopSettingsSnapshot {
     const system = this.#listenerManager.listeners.find((listener) => listener.id === "macos-system");
     const battery = this.#listenerManager.listeners.find((listener) => listener.id === "macos-battery");
+    const petWindow = this.#windowManager.getPetWindow();
     return Object.freeze({
       currentCharacterId: this.#profileStore.get().characterId,
       petSize: this.#preferencesStore.get().petSize,
-      characters: this.#configuration.characters.map(({ id, name }) => Object.freeze({ id, name })),
+      mouseInteractionMode: this.#preferencesStore.get().mouseInteractionMode,
+      petVisible: petWindow?.isVisible() ?? false,
+      runtimeConnected: this.#runtimeCoordinator.isReady(petWindow),
+      characters: this.#configuration.characters.map((character) => {
+        const previewUrl = this.#previewUrl(character);
+        return Object.freeze({
+          id: character.id,
+          name: character.name,
+          ...(previewUrl ? { previewUrl } : {})
+        });
+      }),
       listeners: Object.freeze({
         cpu: this.#listenerState(system?.state),
         memory: this.#listenerState(system?.state),
         battery: this.#batteryAvailable ? this.#listenerState(battery?.state) : "unavailable"
       })
     });
+  }
+
+  #previewUrl(character: DesktopRuntimeConfiguration["characters"][number]): string | undefined {
+    const idleAction = character.behaviorMapping?.IDLE ?? "idle";
+    const asset = character.assets?.[idleAction]?.asset;
+    if (!asset || !this.#configuration.assetBaseUrl) return undefined;
+    return `${this.#configuration.assetBaseUrl}/${encodeURIComponent(character.id)}/${encodeURIComponent(asset)}`;
   }
 
   async setCharacter(value: unknown): Promise<void> {
@@ -104,6 +129,19 @@ export class SettingsIpcCoordinator {
       this.#windowManager.getPetWindow(),
       value,
       PET_SIZE_LAYOUT[value].viewer
+    );
+    this.#notifySettings();
+  }
+
+  async setMouseInteractionMode(value: unknown): Promise<void> {
+    if (!isMouseInteractionMode(value)) {
+      throw new RangeError(`Unknown mouse interaction mode "${String(value)}"`);
+    }
+    await this.#preferencesStore.updateMouseInteractionMode(value);
+    this.#windowManager.setIgnoreMouseEvents(value === "click-through");
+    this.#runtimeCoordinator.sendMouseInteractionModeChanged(
+      this.#windowManager.getPetWindow(),
+      value
     );
     this.#notifySettings();
   }

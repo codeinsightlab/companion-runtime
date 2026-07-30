@@ -200,9 +200,18 @@ export class PetBehaviorEngine extends EventTarget {
     if (!target) return;
 
     this.scheduler.clearRecovery();
+    const slot = target.event
+      ? this.behaviorResolver.resolve({
+        id: `idle-${Date.now()}`,
+        type: target.event,
+        source: { app: "companion-runtime" },
+        payload: {},
+        timestamp: Date.now()
+      })
+      : target.slot;
     const behavior: Behavior = {
       event: "IDLE:auto",
-      slot: target.slot,
+      slot,
       priority: this.#priorityFor("IDLE"),
       startedAt: Date.now()
     };

@@ -93,21 +93,35 @@ Tray 不直接访问 Runtime、PetManager 或 Listener 内部资源。
 
 Settings Window 提供：
 
-- 从 Character Manifest 列表切换当前宠物。
+- 以 Character Manifest 的 IDLE Asset 展示当前伙伴和可用角色卡。
 - 调整 small（96px）、medium（128px）、large（160px）三档尺寸。
-- 只读查看 CPU、Memory、Battery Listener 状态。
+- 以“系统状态”呈现已实现的环境感知能力。
+- 将 Git、VS Code、Codex 标记为“即将支持”或“未连接”，不生成虚假状态。
 - 显示或隐藏宠物窗口。
+- 切换“可交互”与“点击穿透”鼠标模式。
 
 角色切换通过 Pet Renderer 调用现有 `PetManager.changeCharacter()`；宠物窗口不会重新创建 Runtime 或重启 Listener。Settings 普通关闭会销毁 Settings Window，下次从 Tray 重新创建；宠物应用继续运行。
+
+Settings 使用 `#0B0B0F` 深色背景、`#1C1C24` 玻璃卡片和紫色/蓝紫色强调色，产品主层级是当前伙伴，而不是 CPU 或系统监控数据。Development 模式可展开 Developer Mode 查看原始 Runtime / Listener 信息；Production-like 模式完全隐藏该区域。
 
 ## 配置存储位置
 
 桌面配置保存在 Electron `app.getPath("userData")` 下：
 
 - `user-profile.json`：当前 User Profile/角色。
-- `desktop-preferences.json`：尺寸等 Desktop Preferences。
+- `desktop-preferences.json`：尺寸、窗口位置和鼠标交互模式等 Desktop Preferences。
 
 文件使用临时文件加 rename 的方式保存，不写入仓库、Character Manifest 或 PNG 目录。具体绝对路径由 Electron 和操作系统决定，不在代码中写死。
+
+## 宠物交互
+
+- 移动宠物：在“可交互”模式下按住宠物并拖动。移动只改变 Electron 宠物窗口，不创建第二个 Runtime。
+- 恢复位置：移动结束后会延迟保存位置；正常退出时会立即刷新最后位置。下次启动优先恢复到原显示器。
+- 屏幕保护：显示器被移除或分辨率变化时，窗口会修正到可见工作区；无法匹配时回到主屏右下角。
+- 点击反馈：单击宠物会播放轻量反馈动画，不直接选择 PNG 或绕过 Runtime 行为链。
+- 鼠标模式：Settings 可切换“可交互”和“点击穿透”。点击穿透由 Main Process 调用 Electron 窗口 API。
+
+无外部事件时，Core 的可销毁 Idle scheduler 会按配置在 `IDLE` 和 `THINKING` 间选择；动作仍经 Behavior Resolver 和 Action Resolver 解析，不由 Viewer 随机选择资源。
 
 ## 退出
 
@@ -141,8 +155,8 @@ macOS 下启动 `MacSystemListener` 和 `MacBatteryListener`。Listener 只输�
 ## 已知限制
 
 - 尚未实现 Listener 开关与阈值配置。
-- 尚未实现鼠标穿透设置。
-- 尚未实现宠物位置记忆。
+- 点击穿透当前只能从 Settings 切回可交互，尚无全局快捷键。
+- 尚未实现双击、右键菜单、悬停等高级鼠标交互。
 - 尚未生成安装包。
 - 尚未进行 macOS 签名或公证。
 - 当前通过仓库内 Electron 以开发态运行，不是独立 `.app` bundle，尚无正式 bundle identifier。
@@ -159,3 +173,5 @@ macOS 下启动 `MacSystemListener` 和 `MacBatteryListener`。Listener 只输�
 - Desktop Shell Foundation V1：单实例、WindowManager、DesktopLifecycleManager、Runtime IPC 和模式隔离。
 - Desktop Identity V1：Companion 应用名称、Dock activation、最小 Application Menu 和统一 Quit 委托。
 - Desktop Control Surface V1：macOS Tray、独立 Settings、角色/尺寸持久化和 Listener 状态展示。
+- Pet Interaction Foundation V1：拖动、位置恢复、鼠标模式和可停止的自然 Idle 行为。
+- Settings UI Redesign V1：伙伴主视觉、感知能力、角色卡和暗色玻璃拟态控制中心。

@@ -5,7 +5,7 @@ import type {
 } from "electron";
 import type { ExternalEvent } from "../../../../packages/listeners/core/ExternalEvent.js";
 import type { DesktopRuntimeConfiguration } from "../types.js";
-import type { PetSize } from "../preferences/DesktopPreferences.js";
+import type { MouseInteractionMode, PetSize } from "../preferences/DesktopPreferences.js";
 import { DESKTOP_CHANNELS } from "../ipc/channels.js";
 
 interface Waiter {
@@ -63,6 +63,10 @@ export class RuntimeIpcCoordinator {
     return this.#createWaiter(this.#readyWaiters, id, timeoutMs, "Runtime ready timed out");
   }
 
+  isReady(window: BrowserWindow | undefined): boolean {
+    return Boolean(window && this.#canSend(window) && this.#ready.has(window.webContents.id));
+  }
+
   requestStop(window: BrowserWindow, timeoutMs = 2_000): Promise<void> {
     if (!this.#canSend(window)) return Promise.resolve();
     const id = window.webContents.id;
@@ -86,6 +90,15 @@ export class RuntimeIpcCoordinator {
   sendPetSizeChanged(window: BrowserWindow | undefined, petSize: PetSize, pixels: number): boolean {
     if (!window || !this.#canSend(window)) return false;
     window.webContents.send(DESKTOP_CHANNELS.petSizeChanged, petSize, pixels);
+    return true;
+  }
+
+  sendMouseInteractionModeChanged(
+    window: BrowserWindow | undefined,
+    mode: MouseInteractionMode
+  ): boolean {
+    if (!window || !this.#canSend(window)) return false;
+    window.webContents.send(DESKTOP_CHANNELS.petMouseModeChanged, mode);
     return true;
   }
 

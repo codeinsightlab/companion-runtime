@@ -197,3 +197,43 @@ test("priority keeps EXECUTING from interrupting SUCCESS but allows ERROR", asyn
   assert.equal(higher.accepted, true);
   assert.equal(manager.stateMachine.state, "ERROR");
 });
+
+test("idle scheduler resolves a configured Event to a Behavior Slot and stops cleanly", async () => {
+  const manager = createManager();
+  const timers = createTimerHarness();
+  const resolved: CompanionEvent["type"][] = [];
+  const engine = new PetBehaviorEngine({
+    petManager: manager,
+    rules: {
+      ...rules,
+      idle: {
+        enabled: true,
+        timeout: 100,
+        idleActions: [{ slot: "THINKING", event: "TASK_START", weight: 1 }]
+      }
+    },
+    behaviorResolver: {
+      resolve(event) {
+        resolved.push(event.type);
+        switch (event.type) {
+          case "TASK_START": return "THINKING";
+          case "TASK_RUNNING": return "EXECUTING";
+          case "TASK_SUCCESS": return "SUCCESS";
+          case "TASK_ERROR": return "ERROR";
+          default: return "IDLE";
+        }
+      },
+      supports: () => true
+    },
+    scheduler: timers.scheduler
+  });
+
+  engine.start();
+  await timers.tick(100);
+  assert.deepEqual(resolved, ["TASK_START"]);
+  assert.equal(manager.stateMachine.state, "THINKING");
+  assert.ok(manager.calls.some(([kind, value]) => kind === "behavior" && value === "THINKING"));
+  engine.stop();
+  await timers.tick(1000);
+  assert.deepEqual(resolved, ["TASK_START"]);
+});

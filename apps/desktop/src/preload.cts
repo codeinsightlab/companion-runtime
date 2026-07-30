@@ -41,15 +41,25 @@ const bridge: CompanionDesktopBridge = Object.freeze({
     electron.ipcRenderer.on(DESKTOP_CHANNELS.petSizeChanged, listener);
     return () => electron.ipcRenderer.removeListener(DESKTOP_CHANNELS.petSizeChanged, listener);
   },
+  dragPetBy: (deltaX: number, deltaY: number) =>
+    electron.ipcRenderer.send(DESKTOP_CHANNELS.petDrag, deltaX, deltaY),
+  onMouseInteractionModeChanged: (handler: Parameters<CompanionDesktopBridge["onMouseInteractionModeChanged"]>[0]) => {
+    const listener = (_event: electron.IpcRendererEvent, mode: Parameters<typeof handler>[0]) => handler(mode);
+    electron.ipcRenderer.on(DESKTOP_CHANNELS.petMouseModeChanged, listener);
+    return () => electron.ipcRenderer.removeListener(DESKTOP_CHANNELS.petMouseModeChanged, listener);
+  },
   notifyRuntimeReady: () => electron.ipcRenderer.send(DESKTOP_CHANNELS.runtimeReady),
   notifyRuntimeError: (message: string) => electron.ipcRenderer.send(DESKTOP_CHANNELS.runtimeError, message)
 });
 
 const settingsBridge: CompanionSettingsBridge = Object.freeze({
+  getMode: () => process.argv.includes("--companion-mode=production") ? "production" : "development",
   getSnapshot: () => electron.ipcRenderer.invoke(DESKTOP_CHANNELS.settingsGetSnapshot),
   setCharacter: (characterId: string) => electron.ipcRenderer.invoke(DESKTOP_CHANNELS.settingsSetCharacter, characterId),
   setPetSize: (petSize: Parameters<CompanionSettingsBridge["setPetSize"]>[0]) =>
     electron.ipcRenderer.invoke(DESKTOP_CHANNELS.settingsSetPetSize, petSize),
+  setMouseInteractionMode: (mode: Parameters<CompanionSettingsBridge["setMouseInteractionMode"]>[0]) =>
+    electron.ipcRenderer.invoke(DESKTOP_CHANNELS.settingsSetMouseMode, mode),
   showPet: () => electron.ipcRenderer.invoke(DESKTOP_CHANNELS.settingsShowPet),
   hidePet: () => electron.ipcRenderer.invoke(DESKTOP_CHANNELS.settingsHidePet),
   onUpdated: (handler: Parameters<CompanionSettingsBridge["onUpdated"]>[0]) => {

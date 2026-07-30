@@ -33,6 +33,11 @@ export interface DesktopSettingsCoordinator {
   unregister(): void;
 }
 
+export interface DesktopInteractionCoordinator {
+  register(): void;
+  unregister(): void;
+}
+
 export interface DesktopLifecycleManagerOptions<TWindow extends PetWindow> {
   readonly application: DesktopApplication;
   readonly windowManager: WindowManager<TWindow>;
@@ -40,6 +45,7 @@ export interface DesktopLifecycleManagerOptions<TWindow extends PetWindow> {
   readonly runtimeCoordinator: RuntimeCoordinator<TWindow>;
   readonly trayManager?: DesktopTrayManager;
   readonly settingsCoordinator?: DesktopSettingsCoordinator;
+  readonly interactionCoordinator?: DesktopInteractionCoordinator;
   readonly runtimeReadyTimeoutMs?: number;
   readonly runtimeStopTimeoutMs?: number;
   readonly reportError?: (message: string, error: unknown) => void;
@@ -52,6 +58,7 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
   readonly #runtimeCoordinator: RuntimeCoordinator<TWindow>;
   readonly #trayManager?: DesktopTrayManager;
   readonly #settingsCoordinator?: DesktopSettingsCoordinator;
+  readonly #interactionCoordinator?: DesktopInteractionCoordinator;
   readonly #runtimeReadyTimeoutMs: number;
   readonly #runtimeStopTimeoutMs: number;
   readonly #reportError: (message: string, error: unknown) => void;
@@ -66,6 +73,7 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
     runtimeCoordinator,
     trayManager,
     settingsCoordinator,
+    interactionCoordinator,
     runtimeReadyTimeoutMs = 5_000,
     runtimeStopTimeoutMs = 2_000,
     reportError = console.error
@@ -76,6 +84,7 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
     this.#runtimeCoordinator = runtimeCoordinator;
     this.#trayManager = trayManager;
     this.#settingsCoordinator = settingsCoordinator;
+    this.#interactionCoordinator = interactionCoordinator;
     this.#runtimeReadyTimeoutMs = runtimeReadyTimeoutMs;
     this.#runtimeStopTimeoutMs = runtimeStopTimeoutMs;
     this.#reportError = reportError;
@@ -91,6 +100,7 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
     this.#registerApplicationEvents();
     this.#runtimeCoordinator.register();
     this.#settingsCoordinator?.register();
+    this.#interactionCoordinator?.register();
     await this.#application.whenReady();
     if (this.isQuitting) return;
 
@@ -144,6 +154,11 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
     } catch (error) {
       this.#reportError("Unable to destroy all Desktop Listeners", error);
     }
+    try {
+      await this.#windowManager.flushPetPosition();
+    } catch (error) {
+      this.#reportError("Unable to persist final pet position", error);
+    }
 
     if (window) {
       try {
@@ -160,6 +175,7 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
     }
     this.#runtimeCoordinator.unregister();
     this.#settingsCoordinator?.unregister();
+    this.#interactionCoordinator?.unregister();
     this.#unregisterApplicationEvents();
     this.#shutdownComplete = true;
     this.#application.quit();

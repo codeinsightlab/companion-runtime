@@ -29,6 +29,9 @@ class FakeWindow implements PetWindow {
   destroys = 0;
   readonly #closeHandlers: Array<(event: WindowCloseEvent) => void> = [];
   readonly #closedHandlers: Array<() => void> = [];
+  readonly #moveHandlers: Array<() => void> = [];
+  position = [0, 0];
+  ignoresMouse = false;
 
   isDestroyed(): boolean { return this.destroyed; }
   isVisible(): boolean { return this.visible; }
@@ -43,11 +46,19 @@ class FakeWindow implements PetWindow {
     this.destroys += 1;
     for (const handler of this.#closedHandlers) handler();
   }
-  on(event: "close" | "closed", handler: ((event: WindowCloseEvent) => void) | (() => void)): void {
+  getPosition(): number[] { return [...this.position]; }
+  setPosition(x: number, y: number): void {
+    this.position = [x, y];
+    for (const handler of this.#moveHandlers) handler();
+  }
+  setIgnoreMouseEvents(ignore: boolean): void { this.ignoresMouse = ignore; }
+  on(event: "close" | "closed" | "move", handler: ((event: WindowCloseEvent) => void) | (() => void)): void {
     if (event === "close") {
       this.#closeHandlers.push(handler as (event: WindowCloseEvent) => void);
-    } else {
+    } else if (event === "closed") {
       this.#closedHandlers.push(handler as () => void);
+    } else {
+      this.#moveHandlers.push(handler as () => void);
     }
   }
   requestClose(): boolean {

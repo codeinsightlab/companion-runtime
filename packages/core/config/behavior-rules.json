@@ -28,7 +28,13 @@
     "idleActions": [
       {
         "slot": "IDLE",
-        "weight": 100
+        "event": "IDLE",
+        "weight": 75
+      },
+      {
+        "slot": "THINKING",
+        "event": "TASK_START",
+        "weight": 25
       }
     ]
   }

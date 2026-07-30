@@ -9,7 +9,12 @@ import {
 } from "../../../../packages/listeners/system/macos/MacBatteryListener.js";
 import { MacSystemListener } from "../../../../packages/listeners/system/macos/MacSystemListener.js";
 import { loadDesktopRuntimeConfiguration } from "../config.js";
-import { createDesktopWindow, createSettingsWindow, resizeDesktopWindow } from "../window.js";
+import {
+  createDesktopWindow,
+  createSettingsWindow,
+  getDesktopWindowDisplayId,
+  resizeDesktopWindow
+} from "../window.js";
 import type { DesktopMode } from "../window.js";
 import { RuntimeIpcCoordinator } from "../runtime/RuntimeIpcCoordinator.js";
 import { WindowManager } from "../window/WindowManager.js";
@@ -20,6 +25,7 @@ import { SettingsIpcCoordinator } from "../settings/SettingsIpcCoordinator.js";
 import { TrayManager } from "../tray/TrayManager.js";
 import { createTrayIcon } from "../tray/createTrayIcon.js";
 import { DesktopLifecycleManager } from "./DesktopLifecycleManager.js";
+import { PetInteractionIpcCoordinator } from "../ipc/PetInteractionIpcCoordinator.js";
 
 export async function createDesktopLifecycleManager(
   mode: DesktopMode
@@ -52,16 +58,23 @@ export async function createDesktopLifecycleManager(
   const listenerManager = new ListenerManager();
   let lifecycleManager: DesktopLifecycleManager<BrowserWindow> | undefined;
   const windowManager = new WindowManager<BrowserWindow>({
-    createWindow: (petSize) => createDesktopWindow(mode, petSize),
-    createSettingsWindow,
+    createWindow: (petSize, position) => createDesktopWindow(mode, petSize, position),
+    createSettingsWindow: () => createSettingsWindow(mode),
     resizePetWindow: resizeDesktopWindow,
     isQuitting: () => lifecycleManager?.isQuitting ?? false,
-    initialPetSize: preferences.petSize
+    initialPetSize: preferences.petSize,
+    initialPetPosition: preferences.petPosition,
+    initialMouseInteractionMode: preferences.mouseInteractionMode,
+    getDisplayId: getDesktopWindowDisplayId,
+    persistPetPosition: async (position) => {
+      await preferencesStore.updatePetPosition(position);
+    }
   });
   const runtimeCoordinator = new RuntimeIpcCoordinator({
     ipcMain,
     loadConfiguration: async () => configuration
   });
+  const interactionCoordinator = new PetInteractionIpcCoordinator(ipcMain, windowManager);
 
   let batteryAvailable = false;
   if (process.platform === "darwin") {
@@ -106,7 +119,8 @@ export async function createDesktopLifecycleManager(
     listenerManager,
     runtimeCoordinator,
     trayManager,
-    settingsCoordinator
+    settingsCoordinator,
+    interactionCoordinator
   });
 
   if (process.platform === "darwin") {

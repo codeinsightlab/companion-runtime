@@ -52,6 +52,26 @@ body[data-mode="production"] #pet-stage .ninja-pet {
   bottom: 64px;
 }
 
+#pet-stage {
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+#pet-stage:active {
+  cursor: grabbing;
+}
+
+.pet-stage--clicked .ninja-pet {
+  animation: pet-click-feedback 180ms ease-out;
+}
+
+@keyframes pet-click-feedback {
+  50% { transform: translateY(-5px) scale(1.03); }
+}
+
 .event-controls {
   -webkit-app-region: no-drag;
   position: absolute;

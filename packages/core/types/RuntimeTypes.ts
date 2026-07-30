@@ -90,6 +90,7 @@ export interface BehaviorRuleDefinition {
 
 export interface IdleBehaviorTarget {
   slot: BehaviorSlot;
+  event?: CompanionEvent["type"];
   weight?: number;
 }
 

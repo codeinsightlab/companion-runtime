@@ -6,6 +6,38 @@ import { ExternalEventMapper } from "../../../packages/listeners/core/ExternalEv
 async function initializeDesktopRuntime(): Promise<void> {
   document.body.dataset.mode = window.companionDesktop.getMode();
   const configuration = await window.companionDesktop.loadRuntimeConfiguration();
+  const petStage = document.querySelector<HTMLElement>("#pet-stage");
+  let dragPoint: { x: number; y: number } | undefined;
+  let dragged = false;
+  petStage?.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    dragPoint = { x: event.screenX, y: event.screenY };
+    dragged = false;
+    petStage.setPointerCapture(event.pointerId);
+  });
+  petStage?.addEventListener("pointermove", (event) => {
+    if (!dragPoint) return;
+    const deltaX = event.screenX - dragPoint.x;
+    const deltaY = event.screenY - dragPoint.y;
+    if (!deltaX && !deltaY) return;
+    dragged = true;
+    dragPoint = { x: event.screenX, y: event.screenY };
+    window.companionDesktop.dragPetBy(deltaX, deltaY);
+  });
+  const endDrag = (): void => { dragPoint = undefined; };
+  petStage?.addEventListener("pointerup", endDrag);
+  petStage?.addEventListener("pointercancel", endDrag);
+  petStage?.addEventListener("click", () => {
+    if (dragged) {
+      dragged = false;
+      return;
+    }
+    petStage.classList.remove("pet-stage--clicked");
+    requestAnimationFrame(() => petStage.classList.add("pet-stage--clicked"));
+  });
+  const unsubscribeMouseMode = window.companionDesktop.onMouseInteractionModeChanged((mode) => {
+    document.body.dataset.mouseMode = mode;
+  });
   const characterRegistry: CharacterRegistry = {
     getCharacter(id) {
       return configuration.characters.find((character) => character.id === id);
@@ -105,6 +137,7 @@ async function initializeDesktopRuntime(): Promise<void> {
     unsubscribeExternalEvents();
     unsubscribeCharacterChanged();
     unsubscribePetSizeChanged();
+    unsubscribeMouseMode();
     unsubscribeRuntimeStop();
     context.runtime.stop();
   }, { once: true });

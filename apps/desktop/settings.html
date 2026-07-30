@@ -2,46 +2,149 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: file:;" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Companion 设置</title>
     <link rel="stylesheet" href="./settings.css" />
   </head>
   <body>
+    <div class="ambient ambient--violet"></div>
+    <div class="ambient ambient--blue"></div>
     <main class="settings-shell">
-      <header>
-        <p class="eyebrow">COMPANION</p>
-        <h1>桌宠设置</h1>
-        <p class="subtitle">管理当前角色、显示尺寸和桌宠窗口。</p>
+      <header class="app-header">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">✦</span>
+          <div>
+            <p class="eyebrow">COMPANION</p>
+            <h1>伙伴控制中心</h1>
+          </div>
+        </div>
+        <span id="app-state" class="status-pill">
+          <span class="status-dot"></span>
+          <span>连接中</span>
+        </span>
       </header>
 
-      <section class="setting-card">
-        <label for="character-select">当前宠物</label>
-        <select id="character-select" aria-describedby="character-help"></select>
-        <p id="character-help" class="hint">角色能力来自已安装的 Character Manifest。</p>
-      </section>
-
-      <section class="setting-card">
-        <span class="label">宠物大小</span>
-        <div class="segmented" role="group" aria-label="宠物大小">
-          <button type="button" data-pet-size="small">小</button>
-          <button type="button" data-pet-size="medium">中</button>
-          <button type="button" data-pet-size="large">大</button>
+      <section class="hero-card" aria-labelledby="current-companion-title">
+        <div class="hero-copy">
+          <p class="section-kicker">当前伙伴</p>
+          <h2 id="current-companion-title">载入中</h2>
+          <p id="current-companion-id" class="companion-id">COMPANION</p>
+          <div class="presence">
+            <span class="presence-orb" aria-hidden="true"></span>
+            <div>
+              <span class="presence-label">桌面状态</span>
+              <strong id="pet-presence">正在连接</strong>
+            </div>
+          </div>
+        </div>
+        <div class="pet-preview" aria-label="当前伙伴预览">
+          <div class="preview-halo"></div>
+          <img id="current-pet-preview" alt="" />
+          <span id="preview-fallback" aria-hidden="true">✦</span>
         </div>
       </section>
 
-      <section class="setting-card">
-        <span class="label">系统监听状态</span>
-        <dl class="listener-list">
-          <div><dt>CPU</dt><dd data-listener="cpu">读取中</dd></div>
-          <div><dt>内存</dt><dd data-listener="memory">读取中</dd></div>
-          <div><dt>电池</dt><dd data-listener="battery">读取中</dd></div>
-        </dl>
+      <section class="content-section" aria-labelledby="capability-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">COMPANION CAPABILITIES</p>
+            <h2 id="capability-title">感知能力</h2>
+          </div>
+          <span class="section-note">环境感知，不打扰陪伴</span>
+        </div>
+        <div class="capability-grid">
+          <article id="system-capability" class="capability-card capability-card--active">
+            <span class="capability-icon" aria-hidden="true">⌁</span>
+            <div><strong>系统状态</strong><span id="system-capability-state">连接中</span></div>
+            <span id="system-capability-badge" class="capability-badge">连接中</span>
+          </article>
+          <article class="capability-card">
+            <span class="capability-icon" aria-hidden="true">⌘</span>
+            <div><strong>Git</strong><span>即将支持</span></div>
+          </article>
+          <article class="capability-card">
+            <span class="capability-icon" aria-hidden="true">◇</span>
+            <div><strong>VS Code</strong><span>未连接</span></div>
+          </article>
+          <article class="capability-card">
+            <span class="capability-icon" aria-hidden="true">✣</span>
+            <div><strong>Codex</strong><span>未连接</span></div>
+          </article>
+        </div>
       </section>
 
-      <section class="window-actions" aria-label="宠物窗口控制">
-        <button id="show-pet" type="button" class="primary">显示宠物</button>
-        <button id="hide-pet" type="button">隐藏宠物</button>
+      <section class="content-section" aria-labelledby="appearance-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">APPEARANCE</p>
+            <h2 id="appearance-title">外观</h2>
+          </div>
+        </div>
+        <div class="setting-card">
+          <div class="setting-title">
+            <div><strong>宠物大小</strong><span>选择适合桌面的陪伴尺寸</span></div>
+          </div>
+          <div class="size-grid" role="group" aria-label="宠物大小">
+            <button type="button" class="choice-card" data-pet-size="small">
+              <span>小</span><strong>96px</strong>
+            </button>
+            <button type="button" class="choice-card" data-pet-size="medium">
+              <span>中</span><strong>128px</strong>
+            </button>
+            <button type="button" class="choice-card" data-pet-size="large">
+              <span>大</span><strong>160px</strong>
+            </button>
+          </div>
+        </div>
+
+        <div class="setting-card character-setting">
+          <div class="setting-title">
+            <div><strong>选择伙伴</strong><span>来自已安装的 Character Pack</span></div>
+          </div>
+          <div id="character-grid" class="character-grid" role="list" aria-label="可用伙伴"></div>
+        </div>
+
+        <div class="setting-card compact-setting">
+          <div class="setting-title">
+            <div><strong>鼠标交互</strong><span>控制宠物是否接收桌面点击</span></div>
+          </div>
+          <div class="mode-control" role="group" aria-label="鼠标交互模式">
+            <button type="button" data-mouse-mode="interactive">可交互</button>
+            <button type="button" data-mouse-mode="click-through">点击穿透</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="content-section" aria-labelledby="control-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">DESKTOP CONTROL</p>
+            <h2 id="control-title">控制</h2>
+          </div>
+        </div>
+        <div class="window-actions" aria-label="宠物窗口控制">
+          <button id="show-pet" type="button" class="primary-action">
+            <span aria-hidden="true">◉</span>显示宠物
+          </button>
+          <button id="hide-pet" type="button" class="secondary-action">
+            <span aria-hidden="true">○</span>隐藏宠物
+          </button>
+        </div>
+      </section>
+
+      <section id="developer-control" class="developer-control">
+        <button id="developer-toggle" type="button" aria-expanded="false">
+          <span><span aria-hidden="true">⌘</span> Developer Mode</span>
+          <span class="developer-state">关闭</span>
+        </button>
+        <div id="developer-panel" class="developer-panel" hidden>
+          <div><span>Runtime</span><strong data-debug="runtime">读取中</strong></div>
+          <div><span>Event</span><strong>宠物窗口开发控件</strong></div>
+          <div><span>CPU Listener</span><strong data-listener="cpu">读取中</strong></div>
+          <div><span>Memory Listener</span><strong data-listener="memory">读取中</strong></div>
+          <div><span>Battery Listener</span><strong data-listener="battery">读取中</strong></div>
+        </div>
       </section>
 
       <output id="settings-status" aria-live="polite"></output>

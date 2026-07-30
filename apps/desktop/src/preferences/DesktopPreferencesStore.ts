@@ -4,7 +4,12 @@ import {
   DEFAULT_DESKTOP_PREFERENCES,
   validateDesktopPreferences
 } from "./DesktopPreferences.js";
-import type { DesktopPreferences, PetSize } from "./DesktopPreferences.js";
+import type {
+  DesktopPreferences,
+  MouseInteractionMode,
+  PetSize,
+  PetWindowPosition
+} from "./DesktopPreferences.js";
 
 export interface DesktopPreferencesStoreOptions {
   readonly filePath: string;
@@ -41,7 +46,23 @@ export class DesktopPreferencesStore {
   }
 
   async updatePetSize(petSize: PetSize): Promise<DesktopPreferences> {
-    const next = validateDesktopPreferences({ version: 1, petSize });
+    const next = validateDesktopPreferences({ ...this.#current, petSize });
+    return this.#commit(next);
+  }
+
+  async updatePetPosition(petPosition: PetWindowPosition): Promise<DesktopPreferences> {
+    const next = validateDesktopPreferences({ ...this.#current, petPosition });
+    return this.#commit(next);
+  }
+
+  async updateMouseInteractionMode(
+    mouseInteractionMode: MouseInteractionMode
+  ): Promise<DesktopPreferences> {
+    const next = validateDesktopPreferences({ ...this.#current, mouseInteractionMode });
+    return this.#commit(next);
+  }
+
+  async #commit(next: DesktopPreferences): Promise<DesktopPreferences> {
     await this.#save(next);
     this.#current = next;
     this.#loaded = true;

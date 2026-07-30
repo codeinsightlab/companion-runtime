@@ -7,9 +7,12 @@ export const DESKTOP_CHANNELS = Object.freeze({
   runtimeError: "companion:runtime-error",
   characterChanged: "companion:character-changed",
   petSizeChanged: "companion:pet-size-changed",
+  petDrag: "companion:pet:drag",
+  petMouseModeChanged: "companion:pet:mouse-mode-changed",
   settingsGetSnapshot: "companion:settings:get-snapshot",
   settingsSetCharacter: "companion:settings:set-character",
   settingsSetPetSize: "companion:settings:set-pet-size",
+  settingsSetMouseMode: "companion:settings:set-mouse-mode",
   settingsShowPet: "companion:settings:show-pet",
   settingsHidePet: "companion:settings:hide-pet",
   settingsUpdated: "companion:settings:updated"
