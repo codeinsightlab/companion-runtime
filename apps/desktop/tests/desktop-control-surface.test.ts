@@ -23,6 +23,10 @@ import { WindowManager } from "../src/window/WindowManager.js";
 import type { PetWindow, WindowCloseEvent } from "../src/window/WindowManager.js";
 import { PetInteractionIpcCoordinator } from "../src/ipc/PetInteractionIpcCoordinator.js";
 import { DESKTOP_CHANNELS } from "../src/ipc/channels.js";
+import {
+  calculatePopoverBounds,
+  PanelController
+} from "../src/panel/PanelController.js";
 
 class FakeTray implements TrayHandle {
   destroyed = false;
@@ -32,6 +36,9 @@ class FakeTray implements TrayHandle {
   isDestroyed(): boolean { return this.destroyed; }
   setContextMenu(menu: unknown): void { this.menu = menu; }
   setToolTip(toolTip: string): void { this.toolTip = toolTip; }
+  getBounds(): { x: number; y: number; width: number; height: number } {
+    return { x: 2000, y: 0, width: 24, height: 24 };
+  }
 }
 
 class FakeWindow implements PetWindow {
@@ -41,7 +48,9 @@ class FakeWindow implements PetWindow {
   readonly closeHandlers: Array<(event: WindowCloseEvent) => void> = [];
   readonly closedHandlers: Array<() => void> = [];
   readonly moveHandlers: Array<() => void> = [];
+  readonly blurHandlers: Array<() => void> = [];
   position = [0, 0];
+  size = [460, 720];
   ignoresMouse = false;
   isDestroyed(): boolean { return this.destroyed; }
   isVisible(): boolean { return this.visible; }
@@ -53,14 +62,22 @@ class FakeWindow implements PetWindow {
   restore(): void { this.minimized = false; }
   destroy(): void { this.destroyed = true; for (const handler of this.closedHandlers) handler(); }
   getPosition(): number[] { return [...this.position]; }
+  getBounds(): { x: number; y: number; width: number; height: number } {
+    return { x: this.position[0] ?? 0, y: this.position[1] ?? 0, width: this.size[0] ?? 0, height: this.size[1] ?? 0 };
+  }
+  setBounds(bounds: { x: number; y: number; width: number; height: number }): void {
+    this.position = [bounds.x, bounds.y];
+    this.size = [bounds.width, bounds.height];
+  }
   setPosition(x: number, y: number): void {
     this.position = [x, y];
     for (const handler of this.moveHandlers) handler();
   }
   setIgnoreMouseEvents(ignore: boolean): void { this.ignoresMouse = ignore; }
-  on(event: "close" | "closed" | "move", handler: ((event: WindowCloseEvent) => void) | (() => void)): void {
+  on(event: "blur" | "close" | "closed" | "move", handler: ((event: WindowCloseEvent) => void) | (() => void)): void {
     if (event === "close") this.closeHandlers.push(handler as (event: WindowCloseEvent) => void);
     else if (event === "closed") this.closedHandlers.push(handler as () => void);
+    else if (event === "blur") this.blurHandlers.push(handler as () => void);
     else this.moveHandlers.push(handler as () => void);
   }
   close(): void {
@@ -91,15 +108,21 @@ test("TrayManager creates once, routes actions, catches errors and destroys idem
   let creations = 0;
   const errors: string[] = [];
   const calls: string[] = [];
+  let panelTrigger: { x: number; y: number } | undefined;
   let template: MenuItemConstructorOptions[] = [];
+  let petVisible = false;
   const tray = new FakeTray();
   const manager = new TrayManager({
     createTray: () => { creations += 1; return tray; },
     buildMenu: (input) => { template = input; return input; },
     actions: {
-      showPet: () => { calls.push("show"); },
-      hidePet: () => { calls.push("hide"); },
-      openSettings: () => { throw new Error("settings failed"); },
+      isPetVisible: () => petVisible,
+      showPet: () => { petVisible = true; calls.push("show"); },
+      hidePet: () => { petVisible = false; calls.push("hide"); },
+      openSettings: (trigger) => {
+        panelTrigger = trigger;
+        throw new Error("settings failed");
+      },
       requestQuit: () => { calls.push("quit"); }
     },
     reportError: (message) => errors.push(message)
@@ -109,11 +132,13 @@ test("TrayManager creates once, routes actions, catches errors and destroys idem
   assert.equal(manager.create(), true);
   assert.equal(creations, 1);
   menuItem(template, "显示宠物").click?.({} as never, undefined, {} as never);
+  await new Promise<void>((resolve) => setImmediate(resolve));
   menuItem(template, "隐藏宠物").click?.({} as never, undefined, {} as never);
-  menuItem(template, "打开设置").click?.({} as never, undefined, {} as never);
+  menuItem(template, "打开控制面板").click?.({} as never, undefined, {} as never);
   menuItem(template, "退出 Companion").click?.({} as never, undefined, {} as never);
   await Promise.resolve();
   assert.deepEqual(calls, ["show", "hide", "quit"]);
+  assert.deepEqual(panelTrigger, { x: 2012, y: 24 });
   assert.equal(errors.length, 1);
   manager.destroy();
   manager.destroy();
@@ -125,7 +150,7 @@ test("Tray creation failure is isolated", () => {
   const manager = new TrayManager({
     createTray: () => { throw new Error("no tray"); },
     buildMenu: (template) => template,
-    actions: { showPet() {}, hidePet() {}, openSettings() {}, requestQuit() {} },
+    actions: { isPetVisible: () => false, showPet() {}, hidePet() {}, openSettings() {}, requestQuit() {} },
     reportError: (message) => errors.push(message)
   });
   assert.equal(manager.create(), false);
@@ -133,32 +158,83 @@ test("Tray creation failure is isolated", () => {
   assert.equal(errors.length, 1);
 });
 
-test("WindowManager keeps Pet and Settings windows independent and reuses Settings", () => {
+test("WindowManager keeps Pet and Control Surface independent, blur-hides and reuses it", async () => {
   const pet = new FakeWindow();
+  pet.position = [700, 760];
+  pet.size = [148, 148];
   let settings = new FakeWindow();
   let settingsCreations = 0;
+  let activations = 0;
   const resizes: string[] = [];
+  const panelController = new PanelController({
+    createPanel: () => { settingsCreations += 1; return settings; },
+    getDefaultAnchor: () => ({ x: 720, y: 24 }),
+    getDisplayWorkArea: () => ({ x: 0, y: 0, width: 1440, height: 900 }),
+    isQuitting: () => false,
+    activate: () => { activations += 1; },
+    focusDelayMs: 0
+  });
   const manager = new WindowManager({
     createWindow: () => pet,
-    createSettingsWindow: () => { settingsCreations += 1; return settings; },
+    panelController,
     resizePetWindow: (_window, size) => resizes.push(size),
     isQuitting: () => false
   });
   assert.equal(manager.createPetWindow(), pet);
   assert.equal(manager.showSettingsWindow(), settings);
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  assert.equal(activations, 1);
   assert.equal(manager.showSettingsWindow(), settings);
   assert.equal(settingsCreations, 1);
   manager.setPetSize("large");
   assert.deepEqual(resizes, ["large"]);
   settings.close();
-  assert.equal(settings.destroyed, true);
+  assert.equal(settings.destroyed, false);
+  assert.equal(settings.visible, false);
   assert.equal(pet.destroyed, false);
-  settings = new FakeWindow();
-  assert.notEqual(manager.createSettingsWindow(), pet);
-  assert.equal(settingsCreations, 2);
+  assert.equal(manager.showSettingsWindow(), settings);
+  assert.equal(settingsCreations, 1);
+  for (const handler of settings.blurHandlers) handler();
+  assert.equal(settings.visible, false);
   manager.destroyAllWindows();
   assert.equal(pet.destroyed, true);
   assert.equal(settings.destroyed, true);
+});
+
+test("Popover position follows Tray trigger point and uses the trigger display", () => {
+  assert.deepEqual(
+    calculatePopoverBounds(
+      { x: 720, y: 24 },
+      { x: 0, y: 0, width: 460, height: 720 },
+      { x: 0, y: 25, width: 1440, height: 875 }
+    ),
+    { x: 490, y: 37, width: 460, height: 720 }
+  );
+  assert.deepEqual(
+    calculatePopoverBounds(
+      { x: 2200, y: 24 },
+      { x: 0, y: 0, width: 460, height: 720 },
+      { x: 1920, y: 25, width: 1440, height: 875 }
+    ),
+    { x: 1970, y: 37, width: 460, height: 720 }
+  );
+});
+
+test("Panel position clamps to display work area and resizes for a short display", () => {
+  assert.deepEqual(
+    calculatePopoverBounds(
+      { x: 1910, y: 24 },
+      { x: 0, y: 0, width: 460, height: 720 },
+      { x: 0, y: 0, width: 1920, height: 650 }
+    ),
+    { x: 1448, y: 12, width: 460, height: 626 }
+  );
+});
+
+test("Settings Panel stylesheet has no modal overlay or desktop backdrop filter", async () => {
+  const stylesheet = await readFile(new URL("../settings.css", import.meta.url), "utf8");
+  assert.doesNotMatch(stylesheet, /backdrop-filter\s*:/);
+  assert.doesNotMatch(stylesheet, /\.modal-overlay|\.backdrop|\.overlay-mask/);
 });
 
 test("DesktopPreferencesStore defaults, persists atomically and survives restart", async () => {
@@ -175,7 +251,7 @@ test("DesktopPreferencesStore defaults, persists atomically and survives restart
     assert.equal((await restarted.load()).petSize, "large");
     assert.deepEqual(restarted.get().petPosition, { x: 120, y: 240, displayId: "7" });
     assert.equal(restarted.get().mouseInteractionMode, "click-through");
-    assert.deepEqual(PET_SIZE_LAYOUT.small, { viewer: 96, windowWidth: 248, windowHeight: 208 });
+    assert.deepEqual(PET_SIZE_LAYOUT.small, { viewer: 96, windowWidth: 112, windowHeight: 112 });
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -278,6 +354,7 @@ test("Settings coordinator validates Character, persists Profile, syncs size and
     listenerManager.register(new StatusListener("macos-battery"));
     await listenerManager.startAll();
     const sent: string[] = [];
+    const commands: string[] = [];
     const sizes: string[] = [];
     const windowManager = {
       getPetWindow: () => undefined,
@@ -294,6 +371,10 @@ test("Settings coordinator validates Character, persists Profile, syncs size and
         sent.push(`${size}:${pixels}`); return true;
       },
       sendMouseInteractionModeChanged: () => true,
+      sendUserCommand: (_window: BrowserWindow | undefined, command: { name: string }) => {
+        commands.push(command.name);
+        return true;
+      },
       isReady: () => true
     } as unknown as RuntimeIpcCoordinator;
     const configuration = {
@@ -344,6 +425,9 @@ test("Settings coordinator validates Character, persists Profile, syncs size and
     assert.deepEqual(sent, ["naruto", "small:96"]);
     await coordinator.setMouseInteractionMode("click-through");
     assert.equal(preferencesStore.get().mouseInteractionMode, "click-through");
+    assert.throws(() => coordinator.sendUserCommand("DANCE"), /Unknown User Command/);
+    coordinator.sendUserCommand("CELEBRATE");
+    assert.deepEqual(commands, ["CELEBRATE"]);
     const reloadedProfile = new DesktopUserProfileStore(join(directory, "profile.json"), {
       id: "default", characterId: "sasuke", behaviorMapping: {}
     });

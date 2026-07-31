@@ -1,5 +1,6 @@
 import type { ListenerManager } from "../../../../packages/listeners/core/ListenerManager.js";
 import type { ExternalEvent } from "../../../../packages/listeners/core/ExternalEvent.js";
+import type { ScreenPoint } from "../panel/PanelController.js";
 import type { PetWindow, WindowManager } from "../window/WindowManager.js";
 
 export interface BeforeQuitEvent {
@@ -26,11 +27,13 @@ export interface RuntimeCoordinator<TWindow extends PetWindow> {
 export interface DesktopTrayManager {
   create(): boolean;
   destroy(): void;
+  refreshMenu?(): void;
 }
 
 export interface DesktopSettingsCoordinator {
   register(): void;
   unregister(): void;
+  notify?(): void;
 }
 
 export interface DesktopInteractionCoordinator {
@@ -118,17 +121,20 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
     if (this.isQuitting) return;
     this.#windowManager.showPetWindow();
     this.#windowManager.focusPetWindow();
+    this.#settingsCoordinator?.notify?.();
+    this.#trayManager?.refreshMenu?.();
   }
 
   hidePet(): void {
     if (this.isQuitting) return;
     this.#windowManager.hidePetWindow();
+    this.#settingsCoordinator?.notify?.();
+    this.#trayManager?.refreshMenu?.();
   }
 
-  showSettings(): void {
+  showSettings(trigger?: ScreenPoint): void {
     if (this.isQuitting) return;
-    this.#windowManager.showSettingsWindow();
-    this.#windowManager.focusSettingsWindow();
+    this.#windowManager.showSettingsWindow(trigger);
   }
 
   forwardExternalEvent(event: ExternalEvent): boolean {

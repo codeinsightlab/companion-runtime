@@ -1,4 +1,5 @@
 import { BrowserWindow, screen } from "electron";
+import type { Point } from "electron";
 import { fileURLToPath } from "node:url";
 import { PET_SIZE_LAYOUT } from "./preferences/DesktopPreferences.js";
 import type { PetSize, PetWindowPosition } from "./preferences/DesktopPreferences.js";
@@ -63,6 +64,17 @@ export function getDesktopWindowDisplayId(window: BrowserWindow): string {
   return String(screen.getDisplayMatching(window.getBounds()).id);
 }
 
+export function getPointDisplayWorkArea(
+  point: Point
+): { x: number; y: number; width: number; height: number } {
+  const { workArea } = screen.getDisplayNearestPoint(point);
+  return workArea;
+}
+
+export function getCursorScreenPoint(): Point {
+  return screen.getCursorScreenPoint();
+}
+
 export function resolveDesktopWindowPosition(
   savedPosition: PetWindowPosition | undefined,
   width: number,
@@ -99,13 +111,20 @@ export function resolveDesktopWindowPosition(
 
 export function createSettingsWindow(mode: DesktopMode = "development"): BrowserWindow {
   const window = new BrowserWindow({
-    width: 500,
+    width: 460,
     height: 720,
-    minWidth: 440,
-    minHeight: 620,
-    title: "Companion 设置",
+    title: "Companion 控制面板",
     show: false,
-    backgroundColor: "#f4f5f7",
+    frame: false,
+    transparent: true,
+    backgroundColor: "#00000000",
+    alwaysOnTop: true,
+    resizable: false,
+    maximizable: false,
+    minimizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    hasShadow: true,
     webPreferences: {
       preload: fileURLToPath(new URL("./preload.cjs", import.meta.url)),
       contextIsolation: true,
@@ -118,7 +137,9 @@ export function createSettingsWindow(mode: DesktopMode = "development"): Browser
       ]
     }
   });
+  window.setAlwaysOnTop(true, "floating");
+  window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  window.setHiddenInMissionControl(true);
   window.loadFile(fileURLToPath(new URL("../settings.html", import.meta.url)));
-  window.once("ready-to-show", () => window.show());
   return window;
 }

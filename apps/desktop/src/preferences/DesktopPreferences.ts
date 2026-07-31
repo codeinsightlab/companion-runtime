@@ -23,9 +23,9 @@ export const DEFAULT_DESKTOP_PREFERENCES: DesktopPreferences = Object.freeze({
 });
 
 export const PET_SIZE_LAYOUT = Object.freeze({
-  small: Object.freeze({ viewer: 96, windowWidth: 248, windowHeight: 208 }),
-  medium: Object.freeze({ viewer: 128, windowWidth: 280, windowHeight: 240 }),
-  large: Object.freeze({ viewer: 160, windowWidth: 328, windowHeight: 288 })
+  small: Object.freeze({ viewer: 96, windowWidth: 112, windowHeight: 112 }),
+  medium: Object.freeze({ viewer: 128, windowWidth: 148, windowHeight: 148 }),
+  large: Object.freeze({ viewer: 160, windowWidth: 184, windowHeight: 184 })
 } satisfies Record<PetSize, { viewer: number; windowWidth: number; windowHeight: number }>);
 
 export function isPetSize(value: unknown): value is PetSize {

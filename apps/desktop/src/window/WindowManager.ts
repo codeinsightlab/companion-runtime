@@ -3,6 +3,7 @@ import type {
   PetSize,
   PetWindowPosition
 } from "../preferences/DesktopPreferences.js";
+import type { PanelController, ScreenPoint } from "../panel/PanelController.js";
 
 export interface WindowCloseEvent {
   preventDefault(): void;
@@ -18,11 +19,16 @@ export interface PetWindow {
   focus(): void;
   restore(): void;
   destroy(): void;
+  getBounds(): { x: number; y: number; width: number; height: number };
+  setBounds(
+    bounds: { x: number; y: number; width: number; height: number },
+    animate?: boolean
+  ): void;
   getPosition(): number[];
   setPosition(x: number, y: number, animate?: boolean): void;
   setIgnoreMouseEvents(ignore: boolean, options?: { forward: boolean }): void;
   on(
-    event: "close" | "closed" | "move",
+    event: "blur" | "close" | "closed" | "move",
     handler: ((event: WindowCloseEvent) => void) | (() => void)
   ): void;
 }
@@ -34,7 +40,7 @@ export type PetWindowFactory<TWindow extends PetWindow = PetWindow> = (
 
 export interface WindowManagerOptions<TWindow extends PetWindow = PetWindow> {
   readonly createWindow: PetWindowFactory<TWindow>;
-  readonly createSettingsWindow?: () => TWindow;
+  readonly panelController?: PanelController<TWindow>;
   readonly resizePetWindow?: (window: TWindow, petSize: PetSize) => void;
   readonly isQuitting: () => boolean;
   readonly initialPetSize?: PetSize;
@@ -47,11 +53,10 @@ export interface WindowManagerOptions<TWindow extends PetWindow = PetWindow> {
 
 export class WindowManager<TWindow extends PetWindow = PetWindow> {
   readonly #createWindow: PetWindowFactory<TWindow>;
-  readonly #createSettingsWindow?: () => TWindow;
+  readonly #panelController?: PanelController<TWindow>;
   readonly #resizePetWindow?: (window: TWindow, petSize: PetSize) => void;
   readonly #isQuitting: () => boolean;
   #petWindow?: TWindow;
-  #settingsWindow?: TWindow;
   #petSize: PetSize;
   #petPosition?: PetWindowPosition;
   #mouseInteractionMode: MouseInteractionMode;
@@ -64,7 +69,7 @@ export class WindowManager<TWindow extends PetWindow = PetWindow> {
 
   constructor({
     createWindow,
-    createSettingsWindow,
+    panelController,
     resizePetWindow,
     isQuitting,
     initialPetSize = "medium",
@@ -75,7 +80,7 @@ export class WindowManager<TWindow extends PetWindow = PetWindow> {
     positionDebounceMs = 250
   }: WindowManagerOptions<TWindow>) {
     this.#createWindow = createWindow;
-    this.#createSettingsWindow = createSettingsWindow;
+    this.#panelController = panelController;
     this.#resizePetWindow = resizePetWindow;
     this.#isQuitting = isQuitting;
     this.#petSize = initialPetSize;
@@ -187,44 +192,29 @@ export class WindowManager<TWindow extends PetWindow = PetWindow> {
   }
 
   createSettingsWindow(): TWindow {
-    const existing = this.getSettingsWindow();
-    if (existing) return existing;
-    if (!this.#createSettingsWindow) throw new Error("Settings Window factory is not configured");
-    const window = this.#createSettingsWindow();
-    this.#settingsWindow = window;
-    window.on("closed", () => {
-      if (this.#settingsWindow === window) this.#settingsWindow = undefined;
-    });
-    return window;
+    if (!this.#panelController) throw new Error("Settings Panel controller is not configured");
+    return this.#panelController.create();
   }
 
   getSettingsWindow(): TWindow | undefined {
-    if (this.#settingsWindow?.isDestroyed()) this.#settingsWindow = undefined;
-    return this.#settingsWindow;
+    return this.#panelController?.get();
   }
 
   hasSettingsWindow(): boolean {
     return Boolean(this.getSettingsWindow());
   }
 
-  showSettingsWindow(): TWindow {
-    const window = this.createSettingsWindow();
-    if (window.isMinimized()) window.restore();
-    if (!window.isVisible()) window.show();
-    return window;
+  showSettingsWindow(trigger?: ScreenPoint): TWindow {
+    if (!this.#panelController) throw new Error("Settings Panel controller is not configured");
+    return this.#panelController.show(trigger);
   }
 
-  focusSettingsWindow(): TWindow {
-    const window = this.showSettingsWindow();
-    window.focus();
-    return window;
+  focusSettingsWindow(trigger?: ScreenPoint): TWindow {
+    return this.showSettingsWindow(trigger);
   }
 
   destroySettingsWindow(): void {
-    const window = this.getSettingsWindow();
-    if (!window) return;
-    window.destroy();
-    if (this.#settingsWindow === window) this.#settingsWindow = undefined;
+    this.#panelController?.destroy();
   }
 
   destroyAllWindows(): void {

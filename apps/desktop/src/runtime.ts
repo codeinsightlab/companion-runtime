@@ -2,6 +2,7 @@ import { createCompanionRuntime } from "../../../packages/core/bootstrap/createC
 import type { CharacterRegistry } from "../../../packages/core/bootstrap/CharacterRegistry.js";
 import { JsonProfileStore } from "../../../packages/core/profile/storage/JsonProfileStore.js";
 import { ExternalEventMapper } from "../../../packages/listeners/core/ExternalEventMapper.js";
+import { UserCommandAdapter } from "../../../packages/core/events/UserCommandAdapter.js";
 
 async function initializeDesktopRuntime(): Promise<void> {
   document.body.dataset.mode = window.companionDesktop.getMode();
@@ -63,16 +64,52 @@ async function initializeDesktopRuntime(): Promise<void> {
       ...configuration.eventMapping,
       "CUSTOM_EVENT:CPU_HIGH": "EXECUTING",
       "CUSTOM_EVENT:MEMORY_PRESSURE": "ERROR",
-      "CUSTOM_EVENT:BATTERY_LOW": "ERROR"
+      "CUSTOM_EVENT:BATTERY_LOW": "ERROR",
+      "CUSTOM_EVENT:USER_COMMAND:GREET": "THINKING",
+      "CUSTOM_EVENT:USER_COMMAND:CELEBRATE": "SUCCESS",
+      "CUSTOM_EVENT:USER_COMMAND:ENCOURAGE": "EXECUTING",
+      "CUSTOM_EVENT:USER_COMMAND:REST": "IDLE"
     },
     behaviorMapping: configuration.behaviorMapping,
     behaviorRules: {
       ...configuration.behaviorRules,
       events: {
         ...configuration.behaviorRules.events,
-        "CUSTOM_EVENT:CPU_HIGH": {},
-        "CUSTOM_EVENT:MEMORY_PRESSURE": {},
-        "CUSTOM_EVENT:BATTERY_LOW": {}
+        "CUSTOM_EVENT:CPU_HIGH": {
+          duration: 3000,
+          recover: "IDLE",
+          cooldownKey: "SYSTEM_CPU_HIGH"
+        },
+        "CUSTOM_EVENT:MEMORY_PRESSURE": {
+          duration: 5000,
+          recover: "IDLE",
+          cooldownKey: "SYSTEM_MEMORY_PRESSURE"
+        },
+        "CUSTOM_EVENT:BATTERY_LOW": {
+          duration: 5000,
+          recover: "IDLE",
+          cooldownKey: "SYSTEM_BATTERY_LOW"
+        },
+        "CUSTOM_EVENT:USER_COMMAND:GREET": {
+          duration: 1200,
+          recover: "IDLE",
+          cooldownKey: "USER_GREET"
+        },
+        "CUSTOM_EVENT:USER_COMMAND:CELEBRATE": {
+          duration: 3000,
+          recover: "IDLE",
+          cooldownKey: "USER_CELEBRATE"
+        },
+        "CUSTOM_EVENT:USER_COMMAND:ENCOURAGE": {
+          duration: 1800,
+          recover: "IDLE",
+          cooldownKey: "USER_ENCOURAGE"
+        },
+        "CUSTOM_EVENT:USER_COMMAND:REST": {
+          duration: 600,
+          recover: "IDLE",
+          cooldownKey: "USER_REST"
+        }
       }
     },
     runtimeConfig: {
@@ -109,6 +146,18 @@ async function initializeDesktopRuntime(): Promise<void> {
       console.error("Unable to process External Event", error);
     });
   });
+  const userCommandAdapter = new UserCommandAdapter(context.eventNormalizer);
+  const unsubscribeUserCommands = window.companionDesktop.onUserCommand((command) => {
+    void context.runtime.publish(userCommandAdapter.toCompanionEvent(command, {
+      app: "companion-control-surface",
+      platform: "macos"
+    })).then((result) => updateStatus(`USER:${command.name}:${result?.status ?? "unhandled"}`))
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        window.companionDesktop.notifyRuntimeError(message);
+        console.error("Unable to process User Command", error);
+      });
+  });
   const unsubscribeCharacterChanged = window.companionDesktop.onCharacterChanged((characterId) => {
     void context.petManager.changeCharacter(characterId).then(() => updateStatus(`CHARACTER:${characterId}`))
       .catch((error: unknown) => {
@@ -135,6 +184,7 @@ async function initializeDesktopRuntime(): Promise<void> {
   context.behaviorEngine.addEventListener("recovered", () => updateStatus("RECOVERED"));
   window.addEventListener("beforeunload", () => {
     unsubscribeExternalEvents();
+    unsubscribeUserCommands();
     unsubscribeCharacterChanged();
     unsubscribePetSizeChanged();
     unsubscribeMouseMode();

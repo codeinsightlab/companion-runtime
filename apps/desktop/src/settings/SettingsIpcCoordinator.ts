@@ -1,6 +1,9 @@
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from "electron";
 import type { ListenerManager } from "../../../../packages/listeners/core/ListenerManager.js";
 import type { UserProfile } from "../../../../packages/core/profile/UserProfile.js";
+import {
+  isUserCommandName
+} from "../../../../packages/core/types/UserCommand.js";
 import type { DesktopRuntimeConfiguration } from "../types.js";
 import type { DesktopSettingsResult, DesktopSettingsSnapshot, ListenerDisplayState } from "../types.js";
 import { DESKTOP_CHANNELS } from "../ipc/channels.js";
@@ -62,6 +65,8 @@ export class SettingsIpcCoordinator {
       this.#handle(event, () => { this.#windowManager.showPetWindow(); this.#windowManager.focusPetWindow(); }));
     this.#ipcMain.handle(DESKTOP_CHANNELS.settingsHidePet, (event) =>
       this.#handle(event, () => this.#windowManager.hidePetWindow()));
+    this.#ipcMain.handle(DESKTOP_CHANNELS.settingsSendUserCommand, (event, name: unknown) =>
+      this.#handle(event, () => this.sendUserCommand(name)));
   }
 
   unregister(): void {
@@ -73,7 +78,8 @@ export class SettingsIpcCoordinator {
       DESKTOP_CHANNELS.settingsSetPetSize,
       DESKTOP_CHANNELS.settingsSetMouseMode,
       DESKTOP_CHANNELS.settingsShowPet,
-      DESKTOP_CHANNELS.settingsHidePet
+      DESKTOP_CHANNELS.settingsHidePet,
+      DESKTOP_CHANNELS.settingsSendUserCommand
     ]) this.#ipcMain.removeHandler(channel);
   }
 
@@ -101,6 +107,10 @@ export class SettingsIpcCoordinator {
         battery: this.#batteryAvailable ? this.#listenerState(battery?.state) : "unavailable"
       })
     });
+  }
+
+  notify(): void {
+    this.#notifySettings();
   }
 
   #previewUrl(character: DesktopRuntimeConfiguration["characters"][number]): string | undefined {
@@ -144,6 +154,17 @@ export class SettingsIpcCoordinator {
       value
     );
     this.#notifySettings();
+  }
+
+  sendUserCommand(value: unknown): void {
+    if (!isUserCommandName(value)) {
+      throw new RangeError(`Unknown User Command "${String(value)}"`);
+    }
+    const sent = this.#runtimeCoordinator.sendUserCommand(
+      this.#windowManager.getPetWindow(),
+      Object.freeze({ type: "USER_COMMAND", name: value })
+    );
+    if (!sent) throw new Error("Companion Runtime is unavailable");
   }
 
   #listenerState(state: "CREATED" | "STARTED" | "STOPPED" | "DESTROYED" | undefined): ListenerDisplayState {

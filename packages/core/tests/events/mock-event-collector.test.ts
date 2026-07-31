@@ -8,7 +8,9 @@ test("MockEventCollector sends emitted events through EventBus", async () => {
   const bus = new EventBus();
   const collector = new MockEventCollector();
   const received: CompanionEvent[] = [];
-  collector.onEvent((event) => bus.publish(event));
+  collector.onEvent(async (event) => {
+    await bus.publish(event);
+  });
   bus.subscribe((event) => {
     received.push(event);
   });

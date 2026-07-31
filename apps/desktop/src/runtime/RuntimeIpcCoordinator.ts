@@ -4,6 +4,7 @@ import type {
   IpcMainEvent
 } from "electron";
 import type { ExternalEvent } from "../../../../packages/listeners/core/ExternalEvent.js";
+import type { UserCommand } from "../../../../packages/core/types/UserCommand.js";
 import type { DesktopRuntimeConfiguration } from "../types.js";
 import type { MouseInteractionMode, PetSize } from "../preferences/DesktopPreferences.js";
 import { DESKTOP_CHANNELS } from "../ipc/channels.js";
@@ -78,6 +79,12 @@ export class RuntimeIpcCoordinator {
   sendExternalEvent(window: BrowserWindow | undefined, event: ExternalEvent): boolean {
     if (!window || !this.#canSend(window)) return false;
     window.webContents.send(DESKTOP_CHANNELS.externalEvent, event);
+    return true;
+  }
+
+  sendUserCommand(window: BrowserWindow | undefined, command: UserCommand): boolean {
+    if (!window || !this.#canSend(window)) return false;
+    window.webContents.send(DESKTOP_CHANNELS.userCommand, command);
     return true;
   }
 

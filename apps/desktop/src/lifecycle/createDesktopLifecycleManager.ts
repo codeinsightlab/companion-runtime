@@ -12,7 +12,9 @@ import { loadDesktopRuntimeConfiguration } from "../config.js";
 import {
   createDesktopWindow,
   createSettingsWindow,
+  getCursorScreenPoint,
   getDesktopWindowDisplayId,
+  getPointDisplayWorkArea,
   resizeDesktopWindow
 } from "../window.js";
 import type { DesktopMode } from "../window.js";
@@ -26,6 +28,7 @@ import { TrayManager } from "../tray/TrayManager.js";
 import { createTrayIcon } from "../tray/createTrayIcon.js";
 import { DesktopLifecycleManager } from "./DesktopLifecycleManager.js";
 import { PetInteractionIpcCoordinator } from "../ipc/PetInteractionIpcCoordinator.js";
+import { PanelController } from "../panel/PanelController.js";
 
 export async function createDesktopLifecycleManager(
   mode: DesktopMode
@@ -57,9 +60,17 @@ export async function createDesktopLifecycleManager(
 
   const listenerManager = new ListenerManager();
   let lifecycleManager: DesktopLifecycleManager<BrowserWindow> | undefined;
-  const windowManager = new WindowManager<BrowserWindow>({
+  let windowManager!: WindowManager<BrowserWindow>;
+  const panelController = new PanelController<BrowserWindow>({
+    createPanel: () => createSettingsWindow(mode),
+    getDefaultAnchor: getCursorScreenPoint,
+    getDisplayWorkArea: getPointDisplayWorkArea,
+    isQuitting: () => lifecycleManager?.isQuitting ?? false,
+    activate: () => app.focus({ steal: true })
+  });
+  windowManager = new WindowManager<BrowserWindow>({
     createWindow: (petSize, position) => createDesktopWindow(mode, petSize, position),
-    createSettingsWindow: () => createSettingsWindow(mode),
+    panelController,
     resizePetWindow: resizeDesktopWindow,
     isQuitting: () => lifecycleManager?.isQuitting ?? false,
     initialPetSize: preferences.petSize,
@@ -106,9 +117,10 @@ export async function createDesktopLifecycleManager(
     },
     buildMenu: (template) => Menu.buildFromTemplate(template),
     actions: {
+      isPetVisible: () => windowManager.getPetWindow()?.isVisible() ?? false,
       showPet: () => lifecycleManager?.showPet(),
       hidePet: () => lifecycleManager?.hidePet(),
-      openSettings: () => lifecycleManager?.showSettings(),
+      openSettings: (trigger) => lifecycleManager?.showSettings(trigger),
       requestQuit: () => lifecycleManager?.requestQuit()
     }
   });

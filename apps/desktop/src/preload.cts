@@ -18,6 +18,13 @@ const bridge: CompanionDesktopBridge = Object.freeze({
     electron.ipcRenderer.on(DESKTOP_CHANNELS.externalEvent, listener);
     return () => electron.ipcRenderer.removeListener(DESKTOP_CHANNELS.externalEvent, listener);
   },
+  onUserCommand: (handler: Parameters<CompanionDesktopBridge["onUserCommand"]>[0]) => {
+    const listener = (_event: electron.IpcRendererEvent, command: Parameters<typeof handler>[0]) => {
+      handler(command);
+    };
+    electron.ipcRenderer.on(DESKTOP_CHANNELS.userCommand, listener);
+    return () => electron.ipcRenderer.removeListener(DESKTOP_CHANNELS.userCommand, listener);
+  },
   onRuntimeStop: (handler: Parameters<CompanionDesktopBridge["onRuntimeStop"]>[0]) => {
     const listener = () => {
       try {
@@ -62,6 +69,8 @@ const settingsBridge: CompanionSettingsBridge = Object.freeze({
     electron.ipcRenderer.invoke(DESKTOP_CHANNELS.settingsSetMouseMode, mode),
   showPet: () => electron.ipcRenderer.invoke(DESKTOP_CHANNELS.settingsShowPet),
   hidePet: () => electron.ipcRenderer.invoke(DESKTOP_CHANNELS.settingsHidePet),
+  sendUserCommand: (name: Parameters<CompanionSettingsBridge["sendUserCommand"]>[0]) =>
+    electron.ipcRenderer.invoke(DESKTOP_CHANNELS.settingsSendUserCommand, name),
   onUpdated: (handler: Parameters<CompanionSettingsBridge["onUpdated"]>[0]) => {
     const listener = (_event: electron.IpcRendererEvent, snapshot: Parameters<typeof handler>[0]) => handler(snapshot);
     electron.ipcRenderer.on(DESKTOP_CHANNELS.settingsUpdated, listener);

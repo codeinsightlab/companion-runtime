@@ -1,6 +1,7 @@
 export const DESKTOP_CHANNELS = Object.freeze({
   loadRuntimeConfiguration: "companion:load-runtime-configuration",
   externalEvent: "companion:external-event",
+  userCommand: "companion:user-command",
   runtimeReady: "companion:runtime-ready",
   runtimeStop: "companion:runtime-stop",
   runtimeStopped: "companion:runtime-stopped",
@@ -15,6 +16,7 @@ export const DESKTOP_CHANNELS = Object.freeze({
   settingsSetMouseMode: "companion:settings:set-mouse-mode",
   settingsShowPet: "companion:settings:show-pet",
   settingsHidePet: "companion:settings:hide-pet",
+  settingsSendUserCommand: "companion:settings:send-user-command",
   settingsUpdated: "companion:settings:updated"
 });
 

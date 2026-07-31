@@ -4,6 +4,8 @@ import type { CompanionEvent } from "../events/CompanionEvent.js";
 import type { BehaviorSlot } from "../types/BehaviorSlot.js";
 import type {
   Behavior,
+  BehaviorExecutionContext,
+  BehaviorExecutionSource,
   BehaviorIgnoreReason,
   BehaviorResolverLike,
   BehaviorResult,
@@ -17,6 +19,17 @@ import type {
   PetManagerLike
 } from "../types/RuntimeTypes.js";
 
+interface PendingBehaviorExecution {
+  behavior: Behavior;
+  context: BehaviorExecutionContext;
+}
+
+interface ActiveBehaviorExecution extends PendingBehaviorExecution {
+  readonly id: number;
+  applyPromise: Promise<void>;
+  handoffRequested: boolean;
+}
+
 export class PetBehaviorEngine extends EventTarget {
   readonly petManager: PetManagerLike;
   readonly rules: BehaviorRulesConfig;
@@ -25,6 +38,10 @@ export class PetBehaviorEngine extends EventTarget {
   readonly personalityEngine?: PersonalityEngineLike;
   running: boolean;
   currentBehavior: Behavior;
+  #activeExecution?: ActiveBehaviorExecution;
+  readonly #pendingExecutions: PendingBehaviorExecution[] = [];
+  #executionSequence = 0;
+  #draining = false;
 
   static async create({
     petManager,
@@ -89,6 +106,8 @@ export class PetBehaviorEngine extends EventTarget {
   stop(): void {
     this.running = false;
     this.scheduler.stop();
+    this.#activeExecution = undefined;
+    this.#pendingExecutions.length = 0;
   }
 
   async handleEvent(event: CompanionEvent): Promise<BehaviorResult> {
@@ -104,36 +123,53 @@ export class PetBehaviorEngine extends EventTarget {
     const slot = this.behaviorResolver.resolve(event);
     const rule = BehaviorRule.fromEvent(eventKey, ruleDefinition, slot, this.rules.priorities);
     const behavior = rule.toBehavior({ ...event.payload });
-    const cooldownMs = behavior.cooldownKey
-      ? this.rules.cooldown?.[behavior.cooldownKey] ?? 0
-      : 0;
-
-    if (this.scheduler.isCoolingDown(behavior.cooldownKey)) {
-      return this.#ignore(behavior, "cooldown");
-    }
-    if (!this.#canInterrupt(behavior)) {
-      return this.#ignore(behavior, "priority");
+    const candidate = this.#candidateFor(eventKey, behavior);
+    if (candidate.context.source === "USER" && !this.#isTemporary(behavior)) {
+      return this.#ignore(candidate, "lifecycle");
     }
 
-    this.scheduler.clearRecovery();
-    await this.#applyBehavior(behavior);
-    this.scheduler.markCooldown(behavior.cooldownKey, cooldownMs);
-    this.currentBehavior = behavior;
-
-    const recover = behavior.recover;
-    if (behavior.duration && recover) {
-      this.scheduler.scheduleRecovery(behavior.duration, () => {
-        this.#recover(recover, behavior).catch((error: unknown) => this.#emitError(error));
-      });
+    const active = this.#activeExecution;
+    if (!active) {
+      if (this.scheduler.isCoolingDown(behavior.cooldownKey)) {
+        return this.#ignore(candidate, "cooldown");
+      }
+      return this.#startExecution(candidate, "accepted");
     }
 
-    this.#scheduleIdle();
-    this.dispatchEvent(new CustomEvent("accepted", { detail: { behavior } }));
-    return { accepted: true, behavior };
+    if (active.context.source === "USER" && candidate.context.source === "USER") {
+      return this.#startExecution(candidate, "replaced", active);
+    }
+
+    this.#enqueue(candidate);
+    if (
+      active.context.source === "SYSTEM"
+      && candidate.context.source === "SYSTEM"
+      && !this.#isTemporary(active.behavior)
+    ) {
+      this.#requestSystemHandoff(active);
+    }
+    const result: BehaviorResult = {
+      accepted: true,
+      status: "queued",
+      behavior,
+      execution: { ...candidate.context }
+    };
+    this.dispatchEvent(new CustomEvent("queued", { detail: result }));
+    return result;
   }
 
   getCurrentBehavior(): Behavior {
     return { ...this.currentBehavior };
+  }
+
+  get currentExecution(): BehaviorExecutionContext | undefined {
+    return this.#activeExecution
+      ? { ...this.#activeExecution.context }
+      : undefined;
+  }
+
+  get pendingQueue(): BehaviorExecutionContext[] {
+    return this.#pendingExecutions.map(({ context }) => ({ ...context }));
   }
 
   listEvents(): string[] {
@@ -145,10 +181,6 @@ export class PetBehaviorEngine extends EventTarget {
       ? `CUSTOM_EVENT:${name}`
       : eventType;
     return Object.hasOwn(this.rules.events, key);
-  }
-
-  #canInterrupt(behavior: Behavior): boolean {
-    return behavior.priority >= this.currentBehavior.priority;
   }
 
   async #applyBehavior(behavior: Behavior): Promise<void> {
@@ -168,7 +200,11 @@ export class PetBehaviorEngine extends EventTarget {
     }
   }
 
-  async #recover(slot: BehaviorSlot, sourceBehavior: Behavior): Promise<void> {
+  async #recover(
+    slot: BehaviorSlot,
+    sourceBehavior: Behavior,
+    execution: ActiveBehaviorExecution
+  ): Promise<void> {
     const fallbackAction = this.petManager.resolveAction(slot).id;
     const selection = this.#selectPersonalityAction(
       this.petManager.character.id,
@@ -179,6 +215,7 @@ export class PetBehaviorEngine extends EventTarget {
     if (selection.usedPreference && selection.selectedAction) {
       await this.petManager.changeAction(selection.selectedAction);
     }
+    if (this.#activeExecution !== execution) return;
     this.currentBehavior = {
       event: `${sourceBehavior.event}:recover`,
       slot,
@@ -191,11 +228,17 @@ export class PetBehaviorEngine extends EventTarget {
       usedPersonalityPreference: selection.usedPreference
     };
     this.dispatchEvent(new CustomEvent("recovered", { detail: { behavior: this.getCurrentBehavior() } }));
+    this.#activeExecution = undefined;
     this.#scheduleIdle();
+    this.#drainQueue();
   }
 
   async #runIdleBehavior(): Promise<void> {
     if (!this.running) return;
+    if (this.#activeExecution) {
+      this.#scheduleIdle();
+      return;
+    }
     const target = this.#pickIdleTarget();
     if (!target) return;
 
@@ -269,10 +312,155 @@ export class PetBehaviorEngine extends EventTarget {
     return this.personalityEngine.selectAction({ characterId, slot, fallbackAction });
   }
 
-  #ignore(behavior: Behavior, reason: BehaviorIgnoreReason): BehaviorResult {
-    const detail = { behavior, reason };
-    this.dispatchEvent(new CustomEvent("ignored", { detail }));
-    return { accepted: false, reason, behavior };
+  #candidateFor(eventKey: string, behavior: Behavior): PendingBehaviorExecution {
+    const source: BehaviorExecutionSource = eventKey.startsWith("CUSTOM_EVENT:USER_COMMAND:")
+      ? "USER"
+      : "SYSTEM";
+    return {
+      behavior,
+      context: {
+        source,
+        behaviorSlot: behavior.slot,
+        triggerName: eventKey,
+        startedAt: 0,
+        queuedAt: Date.now()
+      }
+    };
+  }
+
+  async #startExecution(
+    candidate: PendingBehaviorExecution,
+    status: "accepted" | "replaced",
+    replaced?: ActiveBehaviorExecution
+  ): Promise<BehaviorResult> {
+    this.scheduler.clearRecovery();
+    const startedAt = Date.now();
+    candidate.behavior.startedAt = startedAt;
+    const execution: ActiveBehaviorExecution = {
+      id: ++this.#executionSequence,
+      behavior: candidate.behavior,
+      context: {
+        ...candidate.context,
+        startedAt
+      },
+      applyPromise: Promise.resolve(),
+      handoffRequested: false
+    };
+    this.#activeExecution = execution;
+    this.currentBehavior = candidate.behavior;
+    execution.applyPromise = this.#applyBehavior(candidate.behavior);
+
+    if (status === "replaced") {
+      this.dispatchEvent(new CustomEvent("replaced", {
+        detail: {
+          previous: replaced ? { ...replaced.context } : undefined,
+          execution: { ...execution.context }
+        }
+      }));
+    }
+
+    try {
+      await execution.applyPromise;
+    } catch (error) {
+      if (this.#activeExecution === execution) {
+        this.#activeExecution = undefined;
+        this.#drainQueue();
+      }
+      throw error;
+    }
+
+    if (this.#activeExecution === execution) {
+      const cooldownMs = candidate.behavior.cooldownKey
+        ? this.rules.cooldown?.[candidate.behavior.cooldownKey] ?? 0
+        : 0;
+      this.scheduler.markCooldown(candidate.behavior.cooldownKey, cooldownMs);
+      const recover = candidate.behavior.recover;
+      if (candidate.behavior.duration && recover) {
+        this.scheduler.scheduleRecovery(candidate.behavior.duration, () => {
+          this.#recover(recover, candidate.behavior, execution)
+            .catch((error: unknown) => this.#emitError(error));
+        });
+      } else if (
+        execution.context.source === "SYSTEM"
+        && this.#pendingExecutions.some(({ context }) => context.source === "SYSTEM")
+      ) {
+        this.#requestSystemHandoff(execution);
+      }
+      this.#scheduleIdle();
+    }
+
+    const result: BehaviorResult = {
+      accepted: true,
+      status,
+      behavior: candidate.behavior,
+      execution: { ...execution.context }
+    };
+    this.dispatchEvent(new CustomEvent("accepted", { detail: result }));
+    return result;
+  }
+
+  #enqueue(candidate: PendingBehaviorExecution): void {
+    if (candidate.context.source === "USER") {
+      for (let index = this.#pendingExecutions.length - 1; index >= 0; index -= 1) {
+        if (this.#pendingExecutions[index]?.context.source === "USER") {
+          this.#pendingExecutions.splice(index, 1);
+        }
+      }
+    }
+    this.#pendingExecutions.push(candidate);
+  }
+
+  #requestSystemHandoff(execution: ActiveBehaviorExecution): void {
+    if (execution.handoffRequested) return;
+    execution.handoffRequested = true;
+    void execution.applyPromise.then(() => {
+      if (this.#activeExecution !== execution) return;
+      this.#activeExecution = undefined;
+      this.#drainQueue();
+    }).catch((error: unknown) => this.#emitError(error));
+  }
+
+  #drainQueue(): void {
+    if (this.#draining || this.#activeExecution) return;
+    this.#draining = true;
+    try {
+      while (!this.#activeExecution && this.#pendingExecutions.length > 0) {
+        const systemIndex = this.#pendingExecutions.findIndex(
+          ({ context }) => context.source === "SYSTEM"
+        );
+        const index = systemIndex >= 0 ? systemIndex : 0;
+        const [candidate] = this.#pendingExecutions.splice(index, 1);
+        if (!candidate) continue;
+        if (this.scheduler.isCoolingDown(candidate.behavior.cooldownKey)) {
+          this.#ignore(candidate, "cooldown");
+          continue;
+        }
+        void this.#startExecution(candidate, "accepted")
+          .catch((error: unknown) => this.#emitError(error));
+      }
+    } finally {
+      this.#draining = false;
+    }
+  }
+
+  #isTemporary(behavior: Behavior): boolean {
+    return Boolean(behavior.duration && behavior.recover);
+  }
+
+  #ignore(
+    candidate: PendingBehaviorExecution,
+    reason: BehaviorIgnoreReason
+  ): BehaviorResult {
+    const result: BehaviorResult = {
+      accepted: false,
+      status: "rejected",
+      reason,
+      behavior: candidate.behavior,
+      execution: { ...candidate.context }
+    };
+    this.dispatchEvent(new CustomEvent("ignored", { detail: result }));
+    this.dispatchEvent(new CustomEvent("rejected", { detail: result }));
+    return result;
   }
 
   #emitError(error: unknown): void {

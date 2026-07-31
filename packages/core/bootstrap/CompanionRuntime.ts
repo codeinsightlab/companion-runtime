@@ -1,6 +1,7 @@
 import type { CompanionEvent } from "../events/CompanionEvent.js";
 import type { EventBus } from "../events/EventBus.js";
 import type { PetBehaviorEngine } from "../runtime/PetBehaviorEngine.js";
+import type { BehaviorResult } from "../types/RuntimeTypes.js";
 
 export class CompanionRuntime {
   readonly #eventBus: EventBus;
@@ -14,9 +15,9 @@ export class CompanionRuntime {
 
   start(): void {
     if (this.#unsubscribe) return;
-    this.#unsubscribe = this.#eventBus.subscribe(async (event) => {
-      await this.#behaviorEngine.handleEvent(event);
-    });
+    this.#unsubscribe = this.#eventBus.subscribe(
+      (event) => this.#behaviorEngine.handleEvent(event)
+    );
     this.#behaviorEngine.start();
   }
 
@@ -26,7 +27,17 @@ export class CompanionRuntime {
     this.#behaviorEngine.stop();
   }
 
-  publish(event: CompanionEvent): Promise<void> {
-    return this.#eventBus.publish(event);
+  async publish(event: CompanionEvent): Promise<BehaviorResult | undefined> {
+    const results = await this.#eventBus.publish(event);
+    return results.find(this.#isBehaviorResult);
+  }
+
+  #isBehaviorResult(value: unknown): value is BehaviorResult {
+    if (!value || typeof value !== "object") return false;
+    const candidate = value as Partial<BehaviorResult>;
+    return typeof candidate.accepted === "boolean"
+      && typeof candidate.status === "string"
+      && Boolean(candidate.behavior)
+      && Boolean(candidate.execution);
   }
 }

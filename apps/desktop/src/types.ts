@@ -8,6 +8,10 @@ import type {
   RuntimeConfig
 } from "../../../packages/core/types/RuntimeTypes.js";
 import type { ExternalEvent } from "../../../packages/listeners/core/ExternalEvent.js";
+import type {
+  UserCommand,
+  UserCommandName
+} from "../../../packages/core/types/UserCommand.js";
 import type { MouseInteractionMode, PetSize } from "./preferences/DesktopPreferences.js";
 
 export interface DesktopRuntimeConfiguration {
@@ -25,6 +29,7 @@ export interface CompanionDesktopBridge {
   loadRuntimeConfiguration(): Promise<DesktopRuntimeConfiguration>;
   getMode(): "development" | "production";
   onExternalEvent(handler: (event: ExternalEvent) => void): () => void;
+  onUserCommand(handler: (command: UserCommand) => void): () => void;
   onRuntimeStop(handler: () => void): () => void;
   onCharacterChanged(handler: (characterId: string) => void): () => void;
   onPetSizeChanged(handler: (petSize: PetSize, pixels: number) => void): () => void;
@@ -66,5 +71,6 @@ export interface CompanionSettingsBridge {
   setMouseInteractionMode(mode: MouseInteractionMode): Promise<DesktopSettingsResult>;
   showPet(): Promise<DesktopSettingsResult>;
   hidePet(): Promise<DesktopSettingsResult>;
+  sendUserCommand(name: UserCommandName): Promise<DesktopSettingsResult>;
   onUpdated(handler: (snapshot: DesktopSettingsSnapshot) => void): () => void;
 }

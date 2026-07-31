@@ -17,6 +17,7 @@ import {
 } from "../src/macos/ApplicationIdentity.js";
 import { WindowManager } from "../src/window/WindowManager.js";
 import type { PetWindow, WindowCloseEvent } from "../src/window/WindowManager.js";
+import { PanelController } from "../src/panel/PanelController.js";
 
 class FakeWindow implements PetWindow {
   visible = false;
@@ -30,7 +31,9 @@ class FakeWindow implements PetWindow {
   readonly #closeHandlers: Array<(event: WindowCloseEvent) => void> = [];
   readonly #closedHandlers: Array<() => void> = [];
   readonly #moveHandlers: Array<() => void> = [];
+  readonly #blurHandlers: Array<() => void> = [];
   position = [0, 0];
+  size = [460, 720];
   ignoresMouse = false;
 
   isDestroyed(): boolean { return this.destroyed; }
@@ -47,16 +50,25 @@ class FakeWindow implements PetWindow {
     for (const handler of this.#closedHandlers) handler();
   }
   getPosition(): number[] { return [...this.position]; }
+  getBounds(): { x: number; y: number; width: number; height: number } {
+    return { x: this.position[0] ?? 0, y: this.position[1] ?? 0, width: this.size[0] ?? 0, height: this.size[1] ?? 0 };
+  }
+  setBounds(bounds: { x: number; y: number; width: number; height: number }): void {
+    this.position = [bounds.x, bounds.y];
+    this.size = [bounds.width, bounds.height];
+  }
   setPosition(x: number, y: number): void {
     this.position = [x, y];
     for (const handler of this.#moveHandlers) handler();
   }
   setIgnoreMouseEvents(ignore: boolean): void { this.ignoresMouse = ignore; }
-  on(event: "close" | "closed" | "move", handler: ((event: WindowCloseEvent) => void) | (() => void)): void {
+  on(event: "blur" | "close" | "closed" | "move", handler: ((event: WindowCloseEvent) => void) | (() => void)): void {
     if (event === "close") {
       this.#closeHandlers.push(handler as (event: WindowCloseEvent) => void);
     } else if (event === "closed") {
       this.#closedHandlers.push(handler as () => void);
+    } else if (event === "blur") {
+      this.#blurHandlers.push(handler as () => void);
     } else {
       this.#moveHandlers.push(handler as () => void);
     }
@@ -343,9 +355,15 @@ test("Desktop control surface follows Tray startup and complete shutdown order",
   const pet = new FakeWindow();
   const settings = new FakeWindow();
   let lifecycle!: DesktopLifecycleManager<FakeWindow>;
+  const panelController = new PanelController({
+    createPanel: () => settings,
+    getDefaultAnchor: () => ({ x: 720, y: 24 }),
+    getDisplayWorkArea: () => ({ x: 0, y: 0, width: 1440, height: 900 }),
+    isQuitting: () => lifecycle.isQuitting
+  });
   const windowManager = new WindowManager({
     createWindow: () => { order.push("pet-create"); return pet; },
-    createSettingsWindow: () => settings,
+    panelController,
     isQuitting: () => lifecycle.isQuitting
   });
   const runtimeCoordinator = new FakeRuntimeCoordinator(order);

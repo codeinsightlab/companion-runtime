@@ -217,7 +217,7 @@ test("MacSystemListener External Event maps through Runtime to the current pet A
     }
   });
   const runtime = new CompanionRuntime(eventBus, behaviorEngine);
-  const pending: Promise<void>[] = [];
+  const pending: Array<ReturnType<typeof runtime.publish>> = [];
   listener.onEvent((externalEvent) => {
     pending.push(runtime.publish(normalizer.normalize(mapper.map(externalEvent))));
   });

@@ -6,6 +6,7 @@ import type { ProfileStore } from "../../profile/ProfileStore.js";
 import type { UserProfile } from "../../profile/UserProfile.js";
 import type { CharacterManifest } from "../../types/CharacterManifest.js";
 import type { BehaviorSchedulerLike } from "../../types/RuntimeTypes.js";
+import { UserCommandAdapter } from "../../events/UserCommandAdapter.js";
 
 class MemoryProfileStore implements ProfileStore {
   readonly #profiles = new Map<string, UserProfile>();
@@ -160,7 +161,10 @@ async function createTestRuntime() {
       TASK_RUNNING: "EXECUTING",
       TASK_SUCCESS: "SUCCESS",
       TASK_ERROR: "ERROR",
-      IDLE: "IDLE"
+      IDLE: "IDLE",
+      "CUSTOM_EVENT:USER_COMMAND:GREET": "THINKING",
+      "CUSTOM_EVENT:USER_COMMAND:CELEBRATE": "SUCCESS",
+      "CUSTOM_EVENT:USER_COMMAND:REST": "IDLE"
     },
     behaviorMapping: {
       IDLE: "idle",
@@ -175,7 +179,22 @@ async function createTestRuntime() {
         TASK_START: {},
         TASK_RUNNING: {},
         TASK_SUCCESS: {},
-        TASK_ERROR: {}
+        TASK_ERROR: {},
+        "CUSTOM_EVENT:USER_COMMAND:GREET": {
+          duration: 1000,
+          recover: "IDLE",
+          cooldownKey: "USER_GREET"
+        },
+        "CUSTOM_EVENT:USER_COMMAND:CELEBRATE": {
+          duration: 1000,
+          recover: "IDLE",
+          cooldownKey: "USER_CELEBRATE"
+        },
+        "CUSTOM_EVENT:USER_COMMAND:REST": {
+          duration: 500,
+          recover: "IDLE",
+          cooldownKey: "USER_REST"
+        }
       }
     },
     behaviorScheduler: scheduler
@@ -229,4 +248,45 @@ test("TASK_SUCCESS flows through Behavior Slot to current Character Action", asy
   assert.equal(context.behaviorEngine.getCurrentBehavior().slot, "SUCCESS");
   assert.equal(context.petManager.resolveAction("SUCCESS").id, "celebrate");
   assert.equal(context.petManager.character.id, "test-pet");
+});
+
+test("UserCommand flows through Runtime publish to Behavior Slot and Character Action", async () => {
+  const context = await createTestRuntime();
+  const adapter = new UserCommandAdapter(context.eventNormalizer);
+  context.runtime.start();
+  const result = await context.runtime.publish(adapter.toCompanionEvent({
+    type: "USER_COMMAND",
+    name: "CELEBRATE"
+  }));
+  context.runtime.stop();
+
+  assert.equal(result?.status, "accepted");
+  assert.equal(context.behaviorEngine.getCurrentBehavior().slot, "SUCCESS");
+  assert.equal(context.petManager.resolveAction("SUCCESS").id, "celebrate");
+  assert.equal(context.petManager.resolveAction("SUCCESS").asset, "success.asset");
+});
+
+test("rapid UserCommands use latest-wins through Runtime and Viewer", async () => {
+  const context = await createTestRuntime();
+  const adapter = new UserCommandAdapter(context.eventNormalizer);
+  context.runtime.start();
+  const publish = (name: "GREET" | "CELEBRATE" | "REST") =>
+    context.runtime.publish(adapter.toCompanionEvent({
+      type: "USER_COMMAND",
+      name
+    }));
+
+  const [greet, celebrate, rest] = await Promise.all([
+    publish("GREET"),
+    publish("CELEBRATE"),
+    publish("REST")
+  ]);
+
+  assert.equal(greet?.status, "accepted");
+  assert.equal(celebrate?.status, "replaced");
+  assert.equal(rest?.status, "replaced");
+  assert.equal(context.behaviorEngine.currentExecution?.triggerName, "CUSTOM_EVENT:USER_COMMAND:REST");
+  assert.equal(context.petManager.stateMachine.state, "IDLE");
+  assert.equal(context.petManager.viewer.currentSrc, "/test-pack/test-pet/idle.asset");
+  context.runtime.stop();
 });

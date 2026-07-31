@@ -12,7 +12,7 @@ Companion Desktop 是 Companion Runtime 的 macOS-first Electron 宿主。Founda
 Electron Main
 → DesktopLifecycleManager
 ├── TrayManager
-├── WindowManager（Pet / Settings）
+├── WindowManager（Pet / Control Panel）
 ├── ListenerManager
 ├── SettingsIpcCoordinator
 └── RuntimeIpcCoordinator
@@ -24,7 +24,7 @@ Pet Renderer
 
 Main Process 负责 Electron、窗口和 Listener 生命周期；Renderer 负责 Runtime 和宠物展示。Desktop 不直接创建 EventBus、BehaviorEngine、ActionResolver 或 PetManager。
 
-Settings 使用独立 HTML Renderer，只暴露 Settings IPC，不加载宠物 `runtime.ts`，因此不会创建第二套 Runtime 或 Viewer。
+控制面板使用独立 HTML Renderer，只暴露 Settings IPC，不加载宠物 `runtime.ts`，因此不会创建第二套 Runtime 或 Viewer。
 
 ## 启动
 
@@ -48,7 +48,7 @@ Production-like 只是 UI 模式验证，不代表已经完成发布构建、签
 
 ## 窗口行为
 
-宠物窗口保持透明、无边框、置顶、固定尺寸和右下角定位。
+宠物窗口保持透明、无边框、置顶、固定尺寸和右下角定位。窗口范围只在 Viewer 外保留约 16–24px 的呼吸动画与阴影余量，不再渲染整窗背景板；可交互模式的拖动/命中区域也随窗口一起收紧。
 
 关闭窗口或按 `Cmd+W`：
 
@@ -82,27 +82,54 @@ Quit 会进入 DesktopLifecycleManager 的统一关闭流程，不会绕过 List
 
 macOS 菜单栏中的 Companion 图标提供：
 
-- 显示宠物：显示并聚焦既有宠物窗口。
-- 隐藏宠物：隐藏宠物，但 Runtime 与 Listener 继续运行。
-- 打开设置：创建或复用唯一 Settings Window。
+- 宠物显示时只提供“隐藏宠物”；宠物隐藏时只提供“显示宠物”。
+- 打开控制面板：显示或复用唯一的轻量浮动 Panel。
 - 退出 Companion：进入 DesktopLifecycleManager 统一退出流程。
 
 Tray 不直接访问 Runtime、PetManager 或 Listener 内部资源。
 
-## Settings
+## 控制面板
 
-Settings Window 提供：
+从 Tray 选择“打开控制面板”。控制面板是透明无边框的浮动 Panel，不是完整设置页；按 `Cmd+W` 关闭时隐藏，再次打开会复用同一实例。
+
+Panel 属于触发入口，不属于 Pet Window。通过 Tray 打开时，应用读取 Tray Bounds 的中心点，并在该触发点所在显示器的可用工作区内定位：
+
+- 水平方向与 Tray 触发点中心对齐。
+- 显示在 macOS 菜单栏下方。
+- 超出屏幕时收敛到触发点所在 Display 的 workArea。
+- 不查询 Pet Window，也不使用固定主屏幕坐标。
+
+Panel 默认尺寸为 460×720；当显示器可用高度不足时会缩小窗口边界，内部内容自然滚动，不压缩卡片层级。Panel 没有 Modal parent、全屏 backdrop 或遮罩层，只保留自身的深色半透明玻璃、圆角与阴影。
+
+Panel 采用 Popover 生命周期：失去焦点或点击桌面后自动隐藏，关闭也是 hide 而非 destroy；重新打开复用同一 BrowserWindow 和 IPC。
+
+控制面板提供：
 
 - 以 Character Manifest 的 IDLE Asset 展示当前伙伴和可用角色卡。
 - 调整 small（96px）、medium（128px）、large（160px）三档尺寸。
 - 以“系统状态”呈现已实现的环境感知能力。
 - 将 Git、VS Code、Codex 标记为“即将支持”或“未连接”，不生成虚假状态。
-- 显示或隐藏宠物窗口。
+- 显示当前可见状态，并只提供与当前状态相反的单一主操作：显示中可隐藏，隐藏后可显示。
 - 切换“可交互”与“点击穿透”鼠标模式。
+- 通过“打招呼、庆祝、鼓励、休息”发送 UserCommand。
 
-角色切换通过 Pet Renderer 调用现有 `PetManager.changeCharacter()`；宠物窗口不会重新创建 Runtime 或重启 Listener。Settings 普通关闭会销毁 Settings Window，下次从 Tray 重新创建；宠物应用继续运行。
+角色切换通过 Pet Renderer 调用现有 `PetManager.changeCharacter()`；宠物窗口不会重新创建 Runtime 或重启 Listener。控制面板隐藏不会销毁应用、Runtime 或 Listener；再次从 Tray 打开时复用同一 Panel。
 
-Settings 使用 `#0B0B0F` 深色背景、`#1C1C24` 玻璃卡片和紫色/蓝紫色强调色，产品主层级是当前伙伴，而不是 CPU 或系统监控数据。Development 模式可展开 Developer Mode 查看原始 Runtime / Listener 信息；Production-like 模式完全隐藏该区域。
+快速互动不绑定 Character Action 或 PNG。完整链路为：
+
+```text
+Control Surface
+    ↓
+UserCommand IPC
+    ↓
+UserCommandAdapter
+    ↓
+CompanionEvent
+    ↓
+Runtime → Behavior → Action → Character Asset
+```
+
+控制面板使用深色半透明玻璃、圆角与紫色/蓝紫色强调色，产品主层级是当前伙伴、外观和快捷控制，而不是 CPU 或系统监控数据。Development 模式可展开 Developer Mode 查看 Runtime / Listener 状态；Production-like 模式隐藏该区域。
 
 ## 配置存储位置
 
@@ -119,7 +146,7 @@ Settings 使用 `#0B0B0F` 深色背景、`#1C1C24` 玻璃卡片和紫色/蓝紫�
 - 恢复位置：移动结束后会延迟保存位置；正常退出时会立即刷新最后位置。下次启动优先恢复到原显示器。
 - 屏幕保护：显示器被移除或分辨率变化时，窗口会修正到可见工作区；无法匹配时回到主屏右下角。
 - 点击反馈：单击宠物会播放轻量反馈动画，不直接选择 PNG 或绕过 Runtime 行为链。
-- 鼠标模式：Settings 可切换“可交互”和“点击穿透”。点击穿透由 Main Process 调用 Electron 窗口 API。
+- 鼠标模式：控制面板可切换“可交互”和“点击穿透”。点击穿透由 Main Process 调用 Electron 窗口 API。
 
 无外部事件时，Core 的可销毁 Idle scheduler 会按配置在 `IDLE` 和 `THINKING` 间选择；动作仍经 Behavior Resolver 和 Action Resolver 解析，不由 Viewer 随机选择资源。
 
@@ -155,7 +182,7 @@ macOS 下启动 `MacSystemListener` 和 `MacBatteryListener`。Listener 只输�
 ## 已知限制
 
 - 尚未实现 Listener 开关与阈值配置。
-- 点击穿透当前只能从 Settings 切回可交互，尚无全局快捷键。
+- 点击穿透当前只能从控制面板切回可交互，尚无全局快捷键。
 - 尚未实现双击、右键菜单、悬停等高级鼠标交互。
 - 尚未生成安装包。
 - 尚未进行 macOS 签名或公证。
@@ -175,3 +202,4 @@ macOS 下启动 `MacSystemListener` 和 `MacBatteryListener`。Listener 只输�
 - Desktop Control Surface V1：macOS Tray、独立 Settings、角色/尺寸持久化和 Listener 状态展示。
 - Pet Interaction Foundation V1：拖动、位置恢复、鼠标模式和可停止的自然 Idle 行为。
 - Settings UI Redesign V1：伙伴主视觉、感知能力、角色卡和暗色玻璃拟态控制中心。
+- V1 Polish：收紧透明 Pet Window，将 Settings 改为可复用浮动 Panel，并将显示/隐藏改为状态驱动的单一操作。

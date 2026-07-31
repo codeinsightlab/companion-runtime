@@ -1,16 +1,19 @@
 import type { MenuItemConstructorOptions } from "electron";
+import type { PanelBounds, ScreenPoint } from "../panel/PanelController.js";
 
 export interface TrayHandle {
   destroy(): void;
   isDestroyed(): boolean;
   setContextMenu(menu: unknown): void;
   setToolTip(toolTip: string): void;
+  getBounds(): PanelBounds;
 }
 
 export interface TrayManagerActions {
+  readonly isPetVisible: () => boolean;
   readonly showPet: () => void | Promise<void>;
   readonly hidePet: () => void | Promise<void>;
-  readonly openSettings: () => void | Promise<void>;
+  readonly openSettings: (trigger: ScreenPoint) => void | Promise<void>;
   readonly requestQuit: () => void | Promise<void>;
 }
 
@@ -55,9 +58,23 @@ export class TrayManager {
     if (!tray || tray.isDestroyed()) return;
     try {
       tray.setContextMenu(this.#buildMenu([
-        { label: "显示宠物", click: () => this.#run("Unable to show pet", this.#actions.showPet) },
-        { label: "隐藏宠物", click: () => this.#run("Unable to hide pet", this.#actions.hidePet) },
-        { label: "打开设置", click: () => this.#run("Unable to open Settings", this.#actions.openSettings) },
+        this.#actions.isPetVisible()
+          ? { label: "隐藏宠物", click: () => this.#run("Unable to hide pet", this.#actions.hidePet) }
+          : { label: "显示宠物", click: () => this.#run("Unable to show pet", this.#actions.showPet) },
+        {
+          label: "打开控制面板",
+          click: () => {
+            const bounds = tray.getBounds();
+            const trigger = {
+              x: bounds.x + bounds.width / 2,
+              y: bounds.y + bounds.height
+            };
+            this.#run(
+              "Unable to open Companion panel",
+              () => this.#actions.openSettings(trigger)
+            );
+          }
+        },
         { type: "separator" },
         { label: "退出 Companion", click: () => this.#run("Unable to quit Companion", this.#actions.requestQuit) }
       ]));
@@ -83,7 +100,9 @@ export class TrayManager {
 
   #run(message: string, action: () => void | Promise<void>): void {
     try {
-      Promise.resolve(action()).catch((error: unknown) => this.#reportError(message, error));
+      Promise.resolve(action())
+        .catch((error: unknown) => this.#reportError(message, error))
+        .finally(() => this.refreshMenu());
     } catch (error) {
       this.#reportError(message, error);
     }

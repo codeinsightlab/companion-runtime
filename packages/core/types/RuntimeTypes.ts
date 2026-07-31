@@ -122,11 +122,38 @@ export interface Behavior {
   usedPersonalityPreference?: boolean;
 }
 
-export type BehaviorIgnoreReason = "cooldown" | "priority";
+export type BehaviorExecutionSource = "USER" | "SYSTEM";
+
+export interface BehaviorExecutionContext {
+  source: BehaviorExecutionSource;
+  behaviorSlot: BehaviorSlot;
+  triggerName: string;
+  startedAt: number;
+  queuedAt?: number;
+}
+
+export type BehaviorDispatchStatus =
+  | "accepted"
+  | "queued"
+  | "replaced"
+  | "rejected";
+
+export type BehaviorIgnoreReason = "cooldown" | "lifecycle" | "priority";
 
 export type BehaviorResult =
-  | { accepted: true; behavior: Behavior }
-  | { accepted: false; reason: BehaviorIgnoreReason; behavior: Behavior };
+  | {
+      accepted: true;
+      status: "accepted" | "queued" | "replaced";
+      behavior: Behavior;
+      execution: BehaviorExecutionContext;
+    }
+  | {
+      accepted: false;
+      status: "rejected";
+      reason: BehaviorIgnoreReason;
+      behavior: Behavior;
+      execution: BehaviorExecutionContext;
+    };
 
 export interface PersonalityActionPreference {
   action: string;

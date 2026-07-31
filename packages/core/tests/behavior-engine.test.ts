@@ -79,7 +79,7 @@ function createTimerHarness(): {
         timers.delete(id);
         timer.callback();
       }
-      await Promise.resolve();
+      for (let index = 0; index < 5; index += 1) await Promise.resolve();
     }
   };
 }
@@ -156,7 +156,7 @@ test("SUCCESS enters success and recovers to IDLE after duration", async () => {
   assert.equal(engine.getCurrentBehavior().recoveredFrom, "TASK_SUCCESS");
 });
 
-test("ERROR interrupts EXECUTING without changing character", async () => {
+test("persistent SYSTEM execution hands off to the next queued SYSTEM event", async () => {
   const manager = createManager();
   const timers = createTimerHarness();
   const engine = createEngine(manager, timers.scheduler);
@@ -178,24 +178,135 @@ test("SUCCESS cooldown blocks repeated success events", async () => {
   await engine.handleEvent(companionEvent("TASK_SUCCESS"));
   const result = await engine.handleEvent(companionEvent("TASK_SUCCESS"));
 
-  assert.equal(result.accepted, false);
-  assert.equal(result.accepted ? undefined : result.reason, "cooldown");
+  assert.equal(result.status, "queued");
+  assert.equal(engine.pendingQueue.length, 1);
+  await timers.tick(3000);
+  assert.equal(engine.pendingQueue.length, 0);
+  assert.equal(manager.stateMachine.state, "IDLE");
 });
 
-test("priority keeps EXECUTING from interrupting SUCCESS but allows ERROR", async () => {
+test("SYSTEM events queue behind temporary SYSTEM execution and preserve FIFO", async () => {
   const manager = createManager();
   const timers = createTimerHarness();
   const engine = createEngine(manager, timers.scheduler);
 
   await engine.handleEvent(companionEvent("TASK_SUCCESS"));
   const lower = await engine.handleEvent(companionEvent("TASK_RUNNING"));
-  assert.equal(lower.accepted, false);
-  assert.equal(lower.accepted ? undefined : lower.reason, "priority");
+  assert.equal(lower.status, "queued");
   assert.equal(manager.stateMachine.state, "SUCCESS");
 
   const higher = await engine.handleEvent(companionEvent("TASK_ERROR"));
-  assert.equal(higher.accepted, true);
+  assert.equal(higher.status, "queued");
+  assert.equal(engine.pendingQueue.length, 2);
+  await timers.tick(3000);
   assert.equal(manager.stateMachine.state, "ERROR");
+  assert.equal(engine.pendingQueue.length, 0);
+});
+
+const userEventMapping = {
+  ...eventMapping,
+  "CUSTOM_EVENT:USER_COMMAND:GREET": "THINKING",
+  "CUSTOM_EVENT:USER_COMMAND:CELEBRATE": "SUCCESS",
+  "CUSTOM_EVENT:USER_COMMAND:REST": "IDLE"
+} satisfies EventMapping;
+
+const ownershipRules = {
+  ...rules,
+  events: {
+    ...rules.events,
+    "CUSTOM_EVENT:USER_COMMAND:GREET": {
+      duration: 1200,
+      recover: "IDLE",
+      cooldownKey: "USER_GREET"
+    },
+    "CUSTOM_EVENT:USER_COMMAND:CELEBRATE": {
+      duration: 3000,
+      recover: "IDLE",
+      cooldownKey: "USER_CELEBRATE"
+    },
+    "CUSTOM_EVENT:USER_COMMAND:REST": {
+      duration: 600,
+      recover: "IDLE",
+      cooldownKey: "USER_REST"
+    }
+  }
+} satisfies BehaviorRulesConfig;
+
+function userCommand(name: "GREET" | "CELEBRATE" | "REST"): CompanionEvent {
+  return {
+    id: `user-${name}`,
+    type: "CUSTOM_EVENT",
+    name: `USER_COMMAND:${name}`,
+    source: { app: "companion-control-surface" },
+    payload: {},
+    timestamp: 1
+  };
+}
+
+function createOwnershipEngine(
+  manager: TestManager,
+  scheduler: BehaviorScheduler
+): PetBehaviorEngine {
+  return new PetBehaviorEngine({
+    petManager: manager,
+    rules: ownershipRules,
+    behaviorResolver: new BehaviorResolver(userEventMapping),
+    scheduler
+  });
+}
+
+test("USER replaces USER and rapid switching ends at REST", async () => {
+  const manager = createManager();
+  const timers = createTimerHarness();
+  const engine = createOwnershipEngine(manager, timers.scheduler);
+
+  const [greet, celebrate, rest] = await Promise.all([
+    engine.handleEvent(userCommand("GREET")),
+    engine.handleEvent(userCommand("CELEBRATE")),
+    engine.handleEvent(userCommand("REST"))
+  ]);
+
+  assert.equal(greet.status, "accepted");
+  assert.equal(celebrate.status, "replaced");
+  assert.equal(rest.status, "replaced");
+  assert.equal(engine.currentExecution?.source, "USER");
+  assert.equal(engine.currentExecution?.triggerName, "CUSTOM_EVENT:USER_COMMAND:REST");
+  assert.equal(manager.stateMachine.state, "IDLE");
+  assert.equal(engine.pendingQueue.length, 0);
+});
+
+test("SYSTEM execution protects itself and queues latest USER command", async () => {
+  const manager = createManager();
+  const timers = createTimerHarness();
+  const engine = createOwnershipEngine(manager, timers.scheduler);
+
+  await engine.handleEvent(companionEvent("TASK_ERROR"));
+  const first = await engine.handleEvent(userCommand("GREET"));
+  const latest = await engine.handleEvent(userCommand("CELEBRATE"));
+
+  assert.equal(first.status, "queued");
+  assert.equal(latest.status, "queued");
+  assert.equal(manager.stateMachine.state, "ERROR");
+  assert.equal(engine.pendingQueue.length, 1);
+  assert.equal(engine.pendingQueue[0]?.triggerName, "CUSTOM_EVENT:USER_COMMAND:CELEBRATE");
+
+  await timers.tick(5000);
+  assert.equal(manager.stateMachine.state, "SUCCESS");
+  assert.equal(engine.currentExecution?.source, "USER");
+});
+
+test("temporary USER behavior recovers to IDLE", async () => {
+  const manager = createManager();
+  const timers = createTimerHarness();
+  const engine = createOwnershipEngine(manager, timers.scheduler);
+
+  await engine.handleEvent(userCommand("CELEBRATE"));
+  assert.equal(manager.stateMachine.state, "SUCCESS");
+  await timers.tick(3000);
+
+  assert.equal(manager.stateMachine.state, "IDLE");
+  assert.equal(engine.currentExecution, undefined);
+  assert.equal(engine.getCurrentBehavior().recoveredFrom, "CUSTOM_EVENT:USER_COMMAND:CELEBRATE");
 });
 
 test("idle scheduler resolves a configured Event to a Behavior Slot and stops cleanly", async () => {

@@ -7,10 +7,13 @@ import type {
   MouseInteractionMode,
   PetSize
 } from "../preferences/DesktopPreferences.js";
+import type { UserCommandName } from "../../../../packages/core/types/UserCommand.js";
 
 const status = document.querySelector<HTMLOutputElement>("#settings-status");
 const characterGrid = document.querySelector<HTMLElement>("#character-grid");
 const preview = document.querySelector<HTMLImageElement>("#current-pet-preview");
+const visibilityAction = document.querySelector<HTMLButtonElement>("#pet-visibility-action");
+let petVisible = false;
 const stateLabels: Record<ListenerDisplayState, string> = {
   running: "运行中",
   stopped: "已停止",
@@ -67,6 +70,7 @@ function renderCharacters(snapshot: DesktopSettingsSnapshot): void {
 }
 
 function render(snapshot: DesktopSettingsSnapshot): void {
+  petVisible = snapshot.petVisible;
   const current = snapshot.characters.find(({ id }) => id === snapshot.currentCharacterId);
   const title = document.querySelector<HTMLElement>("#current-companion-title");
   const id = document.querySelector<HTMLElement>("#current-companion-id");
@@ -84,6 +88,23 @@ function render(snapshot: DesktopSettingsSnapshot): void {
 
   const presence = document.querySelector<HTMLElement>("#pet-presence");
   if (presence) presence.textContent = snapshot.petVisible ? "正在桌面陪伴" : "当前已隐藏";
+  const control = document.querySelector<HTMLElement>(".control-section");
+  const controlTitle = document.querySelector<HTMLElement>("#control-title");
+  const visibilityNote = document.querySelector<HTMLElement>("#visibility-note");
+  if (control) control.dataset.visible = String(snapshot.petVisible);
+  if (controlTitle) controlTitle.textContent = snapshot.petVisible ? "宠物显示中" : "宠物已隐藏";
+  if (visibilityNote) {
+    visibilityNote.textContent = snapshot.petVisible
+      ? "当前伙伴正在桌面陪伴"
+      : "伙伴仍在后台感知环境";
+  }
+  if (visibilityAction) {
+    visibilityAction.textContent = snapshot.petVisible ? "隐藏宠物" : "显示宠物";
+    visibilityAction.setAttribute(
+      "aria-label",
+      snapshot.petVisible ? "隐藏当前宠物" : "显示当前宠物"
+    );
+  }
   const appState = document.querySelector<HTMLElement>("#app-state");
   if (appState) {
     appState.dataset.connected = String(snapshot.runtimeConnected);
@@ -110,14 +131,12 @@ function render(snapshot: DesktopSettingsSnapshot): void {
     element.dataset.state = snapshot.listeners[key];
   }
   const systemState = document.querySelector<HTMLElement>("#system-capability-state");
-  const systemBadge = document.querySelector<HTMLElement>("#system-capability-badge");
   const systemCard = document.querySelector<HTMLElement>("#system-capability");
   if (systemState) {
     const systemRunning = snapshot.listeners.cpu === "running"
       && snapshot.listeners.memory === "running";
     systemState.textContent = systemRunning ? "正在感知环境" : "当前未连接";
-    if (systemBadge) systemBadge.textContent = systemRunning ? "已启用" : "未连接";
-    systemCard?.classList.toggle("capability-card--active", systemRunning);
+    systemCard?.classList.toggle("capability-chip--active", systemRunning);
   }
 }
 
@@ -149,12 +168,24 @@ for (const button of document.querySelectorAll<HTMLButtonElement>("[data-pet-siz
     );
   });
 }
-document.querySelector("#show-pet")?.addEventListener("click", () => {
-  void apply(window.companionSettings.showPet(), "宠物已回到桌面");
+visibilityAction?.addEventListener("click", () => {
+  void apply(
+    petVisible
+      ? window.companionSettings.hidePet()
+      : window.companionSettings.showPet(),
+    petVisible ? "宠物已隐藏，陪伴仍在继续" : "宠物已回到桌面"
+  );
 });
-document.querySelector("#hide-pet")?.addEventListener("click", () => {
-  void apply(window.companionSettings.hidePet(), "宠物已隐藏，陪伴仍在继续");
-});
+
+for (const button of document.querySelectorAll<HTMLButtonElement>("[data-user-command]")) {
+  button.addEventListener("click", () => {
+    const name = button.dataset.userCommand as UserCommandName;
+    void apply(
+      window.companionSettings.sendUserCommand(name),
+      `${button.dataset.successMessage ?? "互动"}已发送给伙伴`
+    );
+  });
+}
 
 const developerToggle = document.querySelector<HTMLButtonElement>("#developer-toggle");
 const developerPanel = document.querySelector<HTMLElement>("#developer-panel");
