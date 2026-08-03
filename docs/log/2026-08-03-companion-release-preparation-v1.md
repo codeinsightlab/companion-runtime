@@ -51,7 +51,8 @@ Companion V1 进入 macOS Preview Release 准备阶段。本轮只增加 Packagi
 - Listener 启动：PASS，日志记录 2 个 Listener started。
 - 标准 Quit：PASS，通过 macOS application quit 进入统一 lifecycle，记录 Listener stopped、Behavior inactive、shutdown complete，随后进程停止。
 - 重启日志追加：PASS，日志大小由 945 bytes 增长至 1512 bytes，原记录保留。
-- Settings/Panel：自动测试 PASS；本轮未执行真实鼠标点击，不标记为人工验证。
+- Tray 菜单：真实 macOS Accessibility 自动化读取到“显示宠物 / 打开控制面板 / 退出 Companion”。
+- Settings/Panel：真实 Tray 命令已触发，Production 日志记录 `tray.open-panel` 和 `window.panel.show`；Popover 随即因自动化失焦隐藏，因此这不是人工视觉验收。
 - Dock 图标与 Pet 视觉：应用成功以 regular identity 启动并可截图；尚需用户最终目视验收图标清晰度和宠物位置。
 
 签名状态：仅 Electron 可执行文件的 ad-hoc/linker signature，未使用 Developer ID，未公证。
