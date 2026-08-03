@@ -8,6 +8,8 @@ import type { UserCommand } from "../../../../packages/core/types/UserCommand.js
 import type { DesktopRuntimeConfiguration } from "../types.js";
 import type { MouseInteractionMode, PetSize } from "../preferences/DesktopPreferences.js";
 import { DESKTOP_CHANNELS } from "../ipc/channels.js";
+import { isDesktopLogEntry } from "../logging/DesktopLogger.js";
+import type { DesktopLoggerLike, DesktopLogEntry } from "../logging/DesktopLogger.js";
 
 interface Waiter {
   readonly resolve: () => void;
@@ -19,21 +21,24 @@ export interface RuntimeIpcCoordinatorOptions {
   readonly ipcMain: IpcMain;
   readonly loadConfiguration: () => Promise<DesktopRuntimeConfiguration>;
   readonly reportError?: (message: string, error: unknown) => void;
+  readonly logger?: DesktopLoggerLike;
 }
 
 export class RuntimeIpcCoordinator {
   readonly #ipcMain: IpcMain;
   readonly #loadConfiguration: () => Promise<DesktopRuntimeConfiguration>;
   readonly #reportError: (message: string, error: unknown) => void;
+  readonly #logger?: DesktopLoggerLike;
   readonly #ready = new Set<number>();
   readonly #readyWaiters = new Map<number, Waiter>();
   readonly #stopWaiters = new Map<number, Waiter>();
   #registered = false;
 
-  constructor({ ipcMain, loadConfiguration, reportError = console.error }: RuntimeIpcCoordinatorOptions) {
+  constructor({ ipcMain, loadConfiguration, reportError = console.error, logger }: RuntimeIpcCoordinatorOptions) {
     this.#ipcMain = ipcMain;
     this.#loadConfiguration = loadConfiguration;
     this.#reportError = reportError;
+    this.#logger = logger;
   }
 
   register(): void {
@@ -43,6 +48,7 @@ export class RuntimeIpcCoordinator {
     this.#ipcMain.on(DESKTOP_CHANNELS.runtimeReady, this.#handleReady);
     this.#ipcMain.on(DESKTOP_CHANNELS.runtimeStopped, this.#handleStopped);
     this.#ipcMain.on(DESKTOP_CHANNELS.runtimeError, this.#handleError);
+    this.#ipcMain.on(DESKTOP_CHANNELS.runtimeLog, this.#handleLog);
   }
 
   unregister(): void {
@@ -52,6 +58,7 @@ export class RuntimeIpcCoordinator {
     this.#ipcMain.removeListener(DESKTOP_CHANNELS.runtimeReady, this.#handleReady);
     this.#ipcMain.removeListener(DESKTOP_CHANNELS.runtimeStopped, this.#handleStopped);
     this.#ipcMain.removeListener(DESKTOP_CHANNELS.runtimeError, this.#handleError);
+    this.#ipcMain.removeListener(DESKTOP_CHANNELS.runtimeLog, this.#handleLog);
     this.#rejectWaiters(this.#readyWaiters, "Runtime IPC Coordinator was unregistered");
     this.#rejectWaiters(this.#stopWaiters, "Runtime IPC Coordinator was unregistered");
     this.#ready.clear();
@@ -121,6 +128,13 @@ export class RuntimeIpcCoordinator {
 
   #handleError = (event: IpcMainEvent, error: unknown): void => {
     this.#reportError(`Renderer Runtime error from webContents ${event.sender.id}`, error);
+  };
+
+  #handleLog = (event: IpcMainEvent, entry: unknown): void => {
+    if (!this.#ready.has(event.sender.id) || !isDesktopLogEntry(entry)) return;
+    const accepted = entry as DesktopLogEntry;
+    const method = accepted.level === "ERROR" ? "error" : accepted.level === "WARN" ? "warn" : "info";
+    this.#logger?.[method](accepted.event, accepted.context);
   };
 
   #createWaiter(

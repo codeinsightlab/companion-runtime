@@ -17,6 +17,12 @@ import type { DesktopPreferencesStore } from "../preferences/DesktopPreferencesS
 import type { DesktopUserProfileStore } from "../preferences/DesktopUserProfileStore.js";
 import type { RuntimeIpcCoordinator } from "../runtime/RuntimeIpcCoordinator.js";
 import type { WindowManager } from "../window/WindowManager.js";
+import type { DesktopMode } from "../window.js";
+import {
+  createDevelopmentExternalEvent,
+  isDevelopmentSystemEvent
+} from "./DevelopmentEventSimulator.js";
+import type { DesktopLoggerLike } from "../logging/DesktopLogger.js";
 
 export interface SettingsIpcCoordinatorOptions {
   readonly ipcMain: IpcMain;
@@ -27,6 +33,8 @@ export interface SettingsIpcCoordinatorOptions {
   readonly windowManager: WindowManager<BrowserWindow>;
   readonly runtimeCoordinator: RuntimeIpcCoordinator;
   readonly batteryAvailable: boolean;
+  readonly mode: DesktopMode;
+  readonly logger?: DesktopLoggerLike;
 }
 
 export class SettingsIpcCoordinator {
@@ -38,6 +46,8 @@ export class SettingsIpcCoordinator {
   readonly #windowManager: WindowManager<BrowserWindow>;
   readonly #runtimeCoordinator: RuntimeIpcCoordinator;
   readonly #batteryAvailable: boolean;
+  readonly #mode: DesktopMode;
+  readonly #logger?: DesktopLoggerLike;
   #registered = false;
 
   constructor(options: SettingsIpcCoordinatorOptions) {
@@ -49,6 +59,8 @@ export class SettingsIpcCoordinator {
     this.#windowManager = options.windowManager;
     this.#runtimeCoordinator = options.runtimeCoordinator;
     this.#batteryAvailable = options.batteryAvailable;
+    this.#mode = options.mode;
+    this.#logger = options.logger;
   }
 
   register(): void {
@@ -67,6 +79,8 @@ export class SettingsIpcCoordinator {
       this.#handle(event, () => this.#windowManager.hidePetWindow()));
     this.#ipcMain.handle(DESKTOP_CHANNELS.settingsSendUserCommand, (event, name: unknown) =>
       this.#handle(event, () => this.sendUserCommand(name)));
+    this.#ipcMain.handle(DESKTOP_CHANNELS.settingsSimulateSystemEvent, (event, name: unknown) =>
+      this.#handle(event, () => this.simulateSystemEvent(name)));
   }
 
   unregister(): void {
@@ -79,7 +93,8 @@ export class SettingsIpcCoordinator {
       DESKTOP_CHANNELS.settingsSetMouseMode,
       DESKTOP_CHANNELS.settingsShowPet,
       DESKTOP_CHANNELS.settingsHidePet,
-      DESKTOP_CHANNELS.settingsSendUserCommand
+      DESKTOP_CHANNELS.settingsSendUserCommand,
+      DESKTOP_CHANNELS.settingsSimulateSystemEvent
     ]) this.#ipcMain.removeHandler(channel);
   }
 
@@ -165,6 +180,22 @@ export class SettingsIpcCoordinator {
       Object.freeze({ type: "USER_COMMAND", name: value })
     );
     if (!sent) throw new Error("Companion Runtime is unavailable");
+    this.#logger?.info("input.user-command", { name: value });
+  }
+
+  simulateSystemEvent(value: unknown): void {
+    if (this.#mode !== "development") {
+      throw new Error("System Event Simulator is available only in Development Mode");
+    }
+    if (!isDevelopmentSystemEvent(value)) {
+      throw new RangeError(`Unknown Development System Event "${String(value)}"`);
+    }
+    const sent = this.#runtimeCoordinator.sendExternalEvent(
+      this.#windowManager.getPetWindow(),
+      createDevelopmentExternalEvent(value)
+    );
+    if (!sent) throw new Error("Companion Runtime is unavailable");
+    this.#logger?.info("input.external-event", { source: "system", name: value, simulated: true });
   }
 
   #listenerState(state: "CREATED" | "STARTED" | "STOPPED" | "DESTROYED" | undefined): ListenerDisplayState {

@@ -84,7 +84,7 @@ export class PetManager extends EventTarget {
 
   changeBehavior(slot: BehaviorSlot): Promise<void> {
     const changed = this.stateMachine.transition(slot, { characterId: this.character.id });
-    if (!changed) return this.#renderBehavior();
+    if (!changed) return this.ready;
     return this.ready;
   }
 

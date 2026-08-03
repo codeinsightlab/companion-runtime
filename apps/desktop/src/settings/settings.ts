@@ -8,6 +8,7 @@ import type {
   PetSize
 } from "../preferences/DesktopPreferences.js";
 import type { UserCommandName } from "../../../../packages/core/types/UserCommand.js";
+import type { DevelopmentSystemEvent } from "./DevelopmentEventSimulator.js";
 
 const status = document.querySelector<HTMLOutputElement>("#settings-status");
 const characterGrid = document.querySelector<HTMLElement>("#character-grid");
@@ -183,6 +184,16 @@ for (const button of document.querySelectorAll<HTMLButtonElement>("[data-user-co
     void apply(
       window.companionSettings.sendUserCommand(name),
       `${button.dataset.successMessage ?? "互动"}已发送给伙伴`
+    );
+  });
+}
+
+for (const button of document.querySelectorAll<HTMLButtonElement>("[data-system-event]")) {
+  button.addEventListener("click", () => {
+    const name = button.dataset.systemEvent as DevelopmentSystemEvent;
+    void apply(
+      window.companionSettings.simulateSystemEvent(name),
+      `${name} ExternalEvent 已发送`
     );
   });
 }

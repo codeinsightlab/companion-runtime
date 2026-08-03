@@ -6,6 +6,7 @@ export const DESKTOP_CHANNELS = Object.freeze({
   runtimeStop: "companion:runtime-stop",
   runtimeStopped: "companion:runtime-stopped",
   runtimeError: "companion:runtime-error",
+  runtimeLog: "companion:runtime-log",
   characterChanged: "companion:character-changed",
   petSizeChanged: "companion:pet-size-changed",
   petDrag: "companion:pet:drag",
@@ -17,6 +18,7 @@ export const DESKTOP_CHANNELS = Object.freeze({
   settingsShowPet: "companion:settings:show-pet",
   settingsHidePet: "companion:settings:hide-pet",
   settingsSendUserCommand: "companion:settings:send-user-command",
+  settingsSimulateSystemEvent: "companion:settings:simulate-system-event",
   settingsUpdated: "companion:settings:updated"
 });
 

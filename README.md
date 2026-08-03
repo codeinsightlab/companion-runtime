@@ -51,6 +51,35 @@ companion-runtime/
 npm test
 ```
 
+## macOS Preview Release
+
+生成未签名的 Preview `.app`：
+
+```bash
+npm install
+npm run typecheck
+npm test
+npm run desktop:package
+```
+
+产物位于：
+
+```text
+release/mac*/Companion.app
+```
+
+Preview 版本使用固定 Bundle Identifier `io.codeinsightlab.companion`，Product Name 为 `Companion`。当前产物尚未签名或公证，首次启动可能受到 macOS Gatekeeper 限制。
+
+Production 日志写入：
+
+```text
+~/Library/Application Support/Companion/logs/companion.log
+```
+
+日志采用 JSON Lines，单文件上限 2 MiB，最多保留 5 个文件，并清理 14 天前的历史日志。日志只记录生命周期、事件名称、行为槽和 Feedback 元数据，不记录 Event payload、文件内容、Token 或用户隐私数据。
+
+完整发布步骤见 [Release Guide](docs/release/macos-preview-release-guide.md)。
+
 ## Run Browser Demo
 
 ```bash
@@ -75,4 +104,4 @@ Add a new action by adding a transparent PNG to a character directory, then regi
 
 ## V1 Freeze
 
-V1 is frozen for migration. Do not change behavior, state names, event semantics, animation timing, character settings, or image assets during migration work.
+当前 Preview 版本为 `0.1.0-preview`。Runtime、Event、Behavior、Listener 和 Character 边界已冻结；Preview Release 只允许 Build、Packaging、Logging 和 Release metadata 调整。

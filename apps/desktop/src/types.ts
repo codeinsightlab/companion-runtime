@@ -13,6 +13,8 @@ import type {
   UserCommandName
 } from "../../../packages/core/types/UserCommand.js";
 import type { MouseInteractionMode, PetSize } from "./preferences/DesktopPreferences.js";
+import type { DevelopmentSystemEvent } from "./settings/DevelopmentEventSimulator.js";
+import type { DesktopLogEntry } from "./logging/DesktopLogger.js";
 
 export interface DesktopRuntimeConfiguration {
   assetBaseUrl: string;
@@ -37,6 +39,7 @@ export interface CompanionDesktopBridge {
   onMouseInteractionModeChanged(handler: (mode: MouseInteractionMode) => void): () => void;
   notifyRuntimeReady(): void;
   notifyRuntimeError(message: string): void;
+  log(entry: DesktopLogEntry): void;
 }
 
 export type ListenerDisplayState = "running" | "stopped" | "unavailable" | "error";
@@ -72,5 +75,6 @@ export interface CompanionSettingsBridge {
   showPet(): Promise<DesktopSettingsResult>;
   hidePet(): Promise<DesktopSettingsResult>;
   sendUserCommand(name: UserCommandName): Promise<DesktopSettingsResult>;
+  simulateSystemEvent(name: DevelopmentSystemEvent): Promise<DesktopSettingsResult>;
   onUpdated(handler: (snapshot: DesktopSettingsSnapshot) => void): () => void;
 }

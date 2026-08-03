@@ -7,6 +7,8 @@ import type { UserProfile } from "../../profile/UserProfile.js";
 import type { CharacterManifest } from "../../types/CharacterManifest.js";
 import type { BehaviorSchedulerLike } from "../../types/RuntimeTypes.js";
 import { UserCommandAdapter } from "../../events/UserCommandAdapter.js";
+import { ExternalEventMapper } from "../../../listeners/core/ExternalEventMapper.js";
+import { createExternalEvent } from "../../../listeners/core/ExternalEvent.js";
 
 class MemoryProfileStore implements ProfileStore {
   readonly #profiles = new Map<string, UserProfile>();
@@ -140,6 +142,8 @@ const registry: CharacterRegistry = {
 const scheduler: BehaviorSchedulerLike = {
   clearRecovery: () => undefined,
   scheduleRecovery: () => undefined,
+  clearFeedback: () => undefined,
+  scheduleFeedback: () => undefined,
   scheduleIdle: () => undefined,
   markCooldown: () => undefined,
   isCoolingDown: () => false,
@@ -164,7 +168,8 @@ async function createTestRuntime() {
       IDLE: "IDLE",
       "CUSTOM_EVENT:USER_COMMAND:GREET": "THINKING",
       "CUSTOM_EVENT:USER_COMMAND:CELEBRATE": "SUCCESS",
-      "CUSTOM_EVENT:USER_COMMAND:REST": "IDLE"
+      "CUSTOM_EVENT:USER_COMMAND:REST": "IDLE",
+      "CUSTOM_EVENT:BATTERY_LOW": "ERROR"
     },
     behaviorMapping: {
       IDLE: "idle",
@@ -180,6 +185,7 @@ async function createTestRuntime() {
         TASK_RUNNING: {},
         TASK_SUCCESS: {},
         TASK_ERROR: {},
+        "CUSTOM_EVENT:BATTERY_LOW": {},
         "CUSTOM_EVENT:USER_COMMAND:GREET": {
           duration: 1000,
           recover: "IDLE",
@@ -235,6 +241,18 @@ test("Runtime Context modules share the same dependency instances", async () => 
   assert.equal(published, true);
 });
 
+test("reapplying the current IDLE slot does not redraw the same Action", async () => {
+  const context = await createTestRuntime();
+  await context.petManager.ready;
+  let renders = 0;
+  context.petManager.viewer.addEventListener("render", () => { renders += 1; });
+
+  await context.petManager.changeBehavior("IDLE");
+
+  assert.equal(renders, 0);
+  assert.equal(context.petManager.viewer.currentSrc, "/test-pack/test-pet/idle.asset");
+});
+
 test("TASK_SUCCESS flows through Behavior Slot to current Character Action", async () => {
   const context = await createTestRuntime();
   context.runtime.start();
@@ -285,8 +303,52 @@ test("rapid UserCommands use latest-wins through Runtime and Viewer", async () =
   assert.equal(greet?.status, "accepted");
   assert.equal(celebrate?.status, "replaced");
   assert.equal(rest?.status, "replaced");
-  assert.equal(context.behaviorEngine.currentExecution?.triggerName, "CUSTOM_EVENT:USER_COMMAND:REST");
+  assert.equal(context.behaviorEngine.currentExecution?.triggerName, "REST");
   assert.equal(context.petManager.stateMachine.state, "IDLE");
   assert.equal(context.petManager.viewer.currentSrc, "/test-pack/test-pet/idle.asset");
   context.runtime.stop();
+});
+
+test("Development ExternalEvent Simulator flows through Mapping to Action and Feedback", async () => {
+  const context = await createTestRuntime();
+  const mapper = new ExternalEventMapper({
+    "system:task_running": { type: "TASK_RUNNING" },
+    "system:task_success": { type: "TASK_SUCCESS" },
+    "system:battery_low": { type: "CUSTOM_EVENT", name: "BATTERY_LOW" }
+  });
+  const publishExternal = (name: string, payload: Record<string, unknown> = {}) =>
+    context.runtime.publish(context.eventNormalizer.normalize(mapper.map(createExternalEvent({
+      source: "system",
+      name,
+      payload
+    }))));
+  context.runtime.start();
+
+  await publishExternal("task_running");
+  assert.equal(context.petManager.stateMachine.state, "EXECUTING");
+  assert.equal(context.petManager.viewer.currentSrc, "/test-pack/test-pet/working.asset");
+  assert.equal(context.behaviorEngine.currentFeedback?.reason, "正在执行任务");
+  assert.equal(context.behaviorEngine.currentFeedback?.mode, "PERSISTENT");
+
+  await publishExternal("task_success");
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.equal(context.petManager.stateMachine.state, "SUCCESS");
+  assert.equal(context.petManager.viewer.currentSrc, "/test-pack/test-pet/success.asset");
+  assert.equal(context.behaviorEngine.currentFeedback?.reason, "任务执行成功");
+
+  context.runtime.stop();
+
+  const batteryContext = await createTestRuntime();
+  batteryContext.runtime.start();
+  await batteryContext.runtime.publish(batteryContext.eventNormalizer.normalize(mapper.map(
+    createExternalEvent({
+      source: "system",
+      name: "battery_low",
+      payload: { level: 15, charging: false }
+    })
+  )));
+  assert.equal(batteryContext.petManager.stateMachine.state, "ERROR");
+  assert.equal(batteryContext.petManager.viewer.currentSrc, "/test-pack/test-pet/error.asset");
+  assert.equal(batteryContext.behaviorEngine.currentFeedback?.reason, "设备电量较低");
+  batteryContext.runtime.stop();
 });

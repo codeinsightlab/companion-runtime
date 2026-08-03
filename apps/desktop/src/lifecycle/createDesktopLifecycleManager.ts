@@ -29,10 +29,16 @@ import { createTrayIcon } from "../tray/createTrayIcon.js";
 import { DesktopLifecycleManager } from "./DesktopLifecycleManager.js";
 import { PetInteractionIpcCoordinator } from "../ipc/PetInteractionIpcCoordinator.js";
 import { PanelController } from "../panel/PanelController.js";
+import type { DesktopLoggerLike } from "../logging/DesktopLogger.js";
 
 export async function createDesktopLifecycleManager(
-  mode: DesktopMode
+  mode: DesktopMode,
+  logger?: DesktopLoggerLike
 ): Promise<DesktopLifecycleManager<BrowserWindow>> {
+  const reportError = (message: string, error: unknown): void => {
+    logger?.error("desktop.error", { message, detail: error instanceof Error ? error.message : String(error) });
+    console.error(message, error);
+  };
   const configuration = await loadDesktopRuntimeConfiguration();
   const preferencesStore = new DesktopPreferencesStore({
     filePath: join(app.getPath("userData"), "desktop-preferences.json")
@@ -49,7 +55,7 @@ export async function createDesktopLifecycleManager(
       new Map(configuration.characters.map((character) => [character.id, character]))
     ).validate(persistedProfile);
   } catch (error) {
-    console.error("Persisted User Profile is invalid; default profile is used", error);
+    reportError("Persisted User Profile is invalid; default profile is used", error);
     await profileStore.save(validProfile);
   }
   configuration.userProfile = validProfile;
@@ -69,7 +75,10 @@ export async function createDesktopLifecycleManager(
     activate: () => app.focus({ steal: true })
   });
   windowManager = new WindowManager<BrowserWindow>({
-    createWindow: (petSize, position) => createDesktopWindow(mode, petSize, position),
+    createWindow: (petSize, position) => {
+      logger?.info("window.pet.create", { petSize });
+      return createDesktopWindow(mode, petSize, position);
+    },
     panelController,
     resizePetWindow: resizeDesktopWindow,
     isQuitting: () => lifecycleManager?.isQuitting ?? false,
@@ -83,7 +92,9 @@ export async function createDesktopLifecycleManager(
   });
   const runtimeCoordinator = new RuntimeIpcCoordinator({
     ipcMain,
-    loadConfiguration: async () => configuration
+    loadConfiguration: async () => configuration,
+    reportError,
+    ...(logger ? { logger } : {})
   });
   const interactionCoordinator = new PetInteractionIpcCoordinator(ipcMain, windowManager);
 
@@ -93,7 +104,7 @@ export async function createDesktopLifecycleManager(
     try {
       batteryAvailable = Boolean(await provider.sample());
     } catch (error) {
-      console.error("Unable to detect macOS battery availability", error);
+      reportError("Unable to detect macOS battery availability", error);
     } finally {
       await provider.destroy();
     }
@@ -107,7 +118,9 @@ export async function createDesktopLifecycleManager(
     listenerManager,
     windowManager,
     runtimeCoordinator,
-    batteryAvailable
+    batteryAvailable,
+    mode,
+    ...(logger ? { logger } : {})
   });
   const trayManager = new TrayManager({
     createTray: () => {
@@ -118,11 +131,12 @@ export async function createDesktopLifecycleManager(
     buildMenu: (template) => Menu.buildFromTemplate(template),
     actions: {
       isPetVisible: () => windowManager.getPetWindow()?.isVisible() ?? false,
-      showPet: () => lifecycleManager?.showPet(),
-      hidePet: () => lifecycleManager?.hidePet(),
-      openSettings: (trigger) => lifecycleManager?.showSettings(trigger),
-      requestQuit: () => lifecycleManager?.requestQuit()
-    }
+      showPet: () => { logger?.info("tray.show-pet"); return lifecycleManager?.showPet(); },
+      hidePet: () => { logger?.info("tray.hide-pet"); return lifecycleManager?.hidePet(); },
+      openSettings: (trigger) => { logger?.info("tray.open-panel"); return lifecycleManager?.showSettings(trigger); },
+      requestQuit: () => { logger?.info("tray.quit"); return lifecycleManager?.requestQuit(); }
+    },
+    reportError
   });
 
   lifecycleManager = new DesktopLifecycleManager({
@@ -132,11 +146,16 @@ export async function createDesktopLifecycleManager(
     runtimeCoordinator,
     trayManager,
     settingsCoordinator,
-    interactionCoordinator
+    interactionCoordinator,
+    ...(logger ? { logger } : {}),
+    reportError
   });
 
   if (process.platform === "darwin") {
-    const forwardExternalEvent = lifecycleManager.forwardExternalEvent.bind(lifecycleManager);
+    const forwardExternalEvent = (event: Parameters<typeof lifecycleManager.forwardExternalEvent>[0]): boolean => {
+      logger?.info("input.external-event", { source: event.source, name: event.name });
+      return lifecycleManager!.forwardExternalEvent(event);
+    };
     const systemListener = new MacSystemListener();
     const batteryListener = new MacBatteryListener();
     systemListener.onEvent(forwardExternalEvent);

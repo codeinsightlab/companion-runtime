@@ -4,7 +4,7 @@
 
 Companion Desktop 是 Companion Runtime 的 macOS-first Electron 宿主。Foundation V1 已具备单实例、统一窗口管理、统一生命周期和开发/正常显示模式边界；Desktop Identity V1 补充了 `Companion` 应用名称、Dock 身份和最小 macOS Application Menu。
 
-当前仍是工程验证版本，尚未制作可安装应用包。
+当前已具备生成未签名 macOS Preview `Companion.app` 的打包基础。
 
 ## 架构
 
@@ -43,6 +43,15 @@ npm run desktop:start:production
 ```
 
 Production-like 只是 UI 模式验证，不代表已经完成发布构建、签名或公证。
+
+生成 Preview App：
+
+```bash
+npm run desktop:package
+open release/mac*/Companion.app
+```
+
+打包后的应用自动使用 Production Mode，不展示开发按钮。
 
 应用使用 Electron single-instance lock。重复执行启动命令不会创建第二个窗口、Runtime 或 Listener，而是显示并聚焦已有宠物窗口。
 
@@ -148,7 +157,17 @@ Runtime → Behavior → Action → Character Asset
 - 点击反馈：单击宠物会播放轻量反馈动画，不直接选择 PNG 或绕过 Runtime 行为链。
 - 鼠标模式：控制面板可切换“可交互”和“点击穿透”。点击穿透由 Main Process 调用 Electron 窗口 API。
 
-无外部事件时，Core 的可销毁 Idle scheduler 会按配置在 `IDLE` 和 `THINKING` 间选择；动作仍经 Behavior Resolver 和 Action Resolver 解析，不由 Viewer 随机选择资源。
+无外部事件时保持 IDLE，仅保留 Viewer 呼吸动画；不会伪造 `TASK_START` 或随机进入 THINKING。
+
+## Production 日志
+
+日志目录：
+
+```text
+~/Library/Application Support/Companion/logs/
+```
+
+日志覆盖 Application、Tray、Window、Listener 生命周期，以及 ExternalEvent 名称、UserCommand、Behavior transition 和 Feedback。ExternalEvent payload、文件内容和凭据不会写入日志。
 
 ## 退出
 
@@ -184,12 +203,12 @@ macOS 下启动 `MacSystemListener` 和 `MacBatteryListener`。Listener 只输�
 - 尚未实现 Listener 开关与阈值配置。
 - 点击穿透当前只能从控制面板切回可交互，尚无全局快捷键。
 - 尚未实现双击、右键菜单、悬停等高级鼠标交互。
-- 尚未生成安装包。
+- Preview 只生成 `.app`，尚未生成 DMG/安装器。
 - 尚未进行 macOS 签名或公证。
-- 当前通过仓库内 Electron 以开发态运行，不是独立 `.app` bundle，尚无正式 bundle identifier。
+- Preview Bundle Identifier 为 `io.codeinsightlab.companion`。
 - 受宿主 `Electron.app` bundle 限制，开发态 Dock tooltip 和最上层菜单标题仍可能显示 `Electron`；生成正式 `Companion.app` 后才能改变这一系统级标签。
 - 尚未实现开机启动。
-- 当前使用 Electron 默认 Dock 图标，尚未建立发布图标资源。
+- Preview 已配置 Companion 图标；正式品牌图标仍可在发布前替换。
 - 尚未验证 Windows/Linux。
 
 ## 版本记录

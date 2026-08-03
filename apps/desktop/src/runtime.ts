@@ -3,6 +3,8 @@ import type { CharacterRegistry } from "../../../packages/core/bootstrap/Charact
 import { JsonProfileStore } from "../../../packages/core/profile/storage/JsonProfileStore.js";
 import { ExternalEventMapper } from "../../../packages/listeners/core/ExternalEventMapper.js";
 import { UserCommandAdapter } from "../../../packages/core/events/UserCommandAdapter.js";
+import type { BehaviorFeedback } from "../../../packages/core/types/RuntimeTypes.js";
+import { BehaviorFeedbackPresenter } from "./runtime/BehaviorFeedbackPresenter.js";
 
 async function initializeDesktopRuntime(): Promise<void> {
   document.body.dataset.mode = window.companionDesktop.getMode();
@@ -53,7 +55,10 @@ async function initializeDesktopRuntime(): Promise<void> {
   const externalEventMapper = new ExternalEventMapper({
     "system:cpu_high": { type: "CUSTOM_EVENT", name: "CPU_HIGH" },
     "system:memory_pressure": { type: "CUSTOM_EVENT", name: "MEMORY_PRESSURE" },
-    "system:battery_low": { type: "CUSTOM_EVENT", name: "BATTERY_LOW" }
+    "system:battery_low": { type: "CUSTOM_EVENT", name: "BATTERY_LOW" },
+    "system:task_running": { type: "TASK_RUNNING" },
+    "system:task_success": { type: "TASK_SUCCESS" },
+    "system:task_error": { type: "TASK_ERROR" }
   });
   const context = await createCompanionRuntime({
     profileId: configuration.userProfile.id,
@@ -124,7 +129,54 @@ async function initializeDesktopRuntime(): Promise<void> {
 
   context.runtime.start();
 
+  const reasonBubble = document.querySelector<HTMLElement>("#behavior-reason");
+  const reasonText = document.querySelector<HTMLElement>("#behavior-reason-text");
+  const reasonSlot = document.querySelector<HTMLElement>("#behavior-reason-slot");
+  const reasonSource = document.querySelector<HTMLElement>("#behavior-reason-source");
+  const reasonTrigger = document.querySelector<HTMLElement>("#behavior-reason-trigger");
   const status = document.querySelector<HTMLElement>("#runtime-status");
+  const feedbackPresenter = reasonBubble && reasonText
+    ? new BehaviorFeedbackPresenter({
+      bubble: reasonBubble,
+      reason: reasonText,
+      ...(reasonSlot ? { slot: reasonSlot } : {}),
+      ...(reasonSource ? { source: reasonSource } : {}),
+      ...(reasonTrigger ? { trigger: reasonTrigger } : {}),
+      ...(status ? { internalStatus: status } : {})
+    })
+    : undefined;
+  const handleFeedbackChanged = (event: Event): void => {
+    const detail = (event as CustomEvent<{ feedback?: BehaviorFeedback }>).detail;
+    feedbackPresenter?.render(detail.feedback);
+    const feedback = detail.feedback;
+    window.companionDesktop.log({
+      level: "INFO",
+      event: feedback ? "behavior.feedback" : "behavior.feedback.cleared",
+      ...(feedback ? { context: {
+        slot: feedback.behaviorSlot,
+        source: feedback.source,
+        trigger: feedback.triggerName,
+        level: feedback.level,
+        mode: feedback.mode
+      } } : {})
+    });
+  };
+  context.behaviorEngine.addEventListener("feedbackchanged", handleFeedbackChanged);
+  const handleActiveBehaviorChanged = (event: Event): void => {
+    const detail = (event as CustomEvent<{ activeBehavior?: { behaviorSlot: string; source: string; triggerName: string } }>).detail;
+    window.companionDesktop.log({
+      level: "INFO",
+      event: detail.activeBehavior ? "behavior.transition" : "behavior.inactive",
+      ...(detail.activeBehavior ? { context: {
+        slot: detail.activeBehavior.behaviorSlot,
+        source: detail.activeBehavior.source,
+        trigger: detail.activeBehavior.triggerName
+      } } : {})
+    });
+  };
+  context.behaviorEngine.addEventListener("activebehaviorchanged", handleActiveBehaviorChanged);
+  feedbackPresenter?.render(context.behaviorEngine.currentFeedback);
+
   function updateStatus(prefix: string): void {
     if (!status) return;
     const behavior = context.behaviorEngine.getCurrentBehavior();
@@ -189,6 +241,8 @@ async function initializeDesktopRuntime(): Promise<void> {
     unsubscribePetSizeChanged();
     unsubscribeMouseMode();
     unsubscribeRuntimeStop();
+    context.behaviorEngine.removeEventListener("feedbackchanged", handleFeedbackChanged);
+    context.behaviorEngine.removeEventListener("activebehaviorchanged", handleActiveBehaviorChanged);
     context.runtime.stop();
   }, { once: true });
   updateStatus("READY");

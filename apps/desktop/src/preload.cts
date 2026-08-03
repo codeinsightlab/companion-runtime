@@ -56,7 +56,9 @@ const bridge: CompanionDesktopBridge = Object.freeze({
     return () => electron.ipcRenderer.removeListener(DESKTOP_CHANNELS.petMouseModeChanged, listener);
   },
   notifyRuntimeReady: () => electron.ipcRenderer.send(DESKTOP_CHANNELS.runtimeReady),
-  notifyRuntimeError: (message: string) => electron.ipcRenderer.send(DESKTOP_CHANNELS.runtimeError, message)
+  notifyRuntimeError: (message: string) => electron.ipcRenderer.send(DESKTOP_CHANNELS.runtimeError, message),
+  log: (entry: Parameters<CompanionDesktopBridge["log"]>[0]) =>
+    electron.ipcRenderer.send(DESKTOP_CHANNELS.runtimeLog, entry)
 });
 
 const settingsBridge: CompanionSettingsBridge = Object.freeze({
@@ -71,6 +73,8 @@ const settingsBridge: CompanionSettingsBridge = Object.freeze({
   hidePet: () => electron.ipcRenderer.invoke(DESKTOP_CHANNELS.settingsHidePet),
   sendUserCommand: (name: Parameters<CompanionSettingsBridge["sendUserCommand"]>[0]) =>
     electron.ipcRenderer.invoke(DESKTOP_CHANNELS.settingsSendUserCommand, name),
+  simulateSystemEvent: (name: Parameters<CompanionSettingsBridge["simulateSystemEvent"]>[0]) =>
+    electron.ipcRenderer.invoke(DESKTOP_CHANNELS.settingsSimulateSystemEvent, name),
   onUpdated: (handler: Parameters<CompanionSettingsBridge["onUpdated"]>[0]) => {
     const listener = (_event: electron.IpcRendererEvent, snapshot: Parameters<typeof handler>[0]) => handler(snapshot);
     electron.ipcRenderer.on(DESKTOP_CHANNELS.settingsUpdated, listener);

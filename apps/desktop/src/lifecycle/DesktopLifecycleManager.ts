@@ -2,6 +2,7 @@ import type { ListenerManager } from "../../../../packages/listeners/core/Listen
 import type { ExternalEvent } from "../../../../packages/listeners/core/ExternalEvent.js";
 import type { ScreenPoint } from "../panel/PanelController.js";
 import type { PetWindow, WindowManager } from "../window/WindowManager.js";
+import type { DesktopLoggerLike } from "../logging/DesktopLogger.js";
 
 export interface BeforeQuitEvent {
   preventDefault(): void;
@@ -52,6 +53,7 @@ export interface DesktopLifecycleManagerOptions<TWindow extends PetWindow> {
   readonly runtimeReadyTimeoutMs?: number;
   readonly runtimeStopTimeoutMs?: number;
   readonly reportError?: (message: string, error: unknown) => void;
+  readonly logger?: DesktopLoggerLike;
 }
 
 export class DesktopLifecycleManager<TWindow extends PetWindow> {
@@ -65,6 +67,7 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
   readonly #runtimeReadyTimeoutMs: number;
   readonly #runtimeStopTimeoutMs: number;
   readonly #reportError: (message: string, error: unknown) => void;
+  readonly #logger?: DesktopLoggerLike;
   #started = false;
   #shutdownComplete = false;
   #shutdownPromise?: Promise<void>;
@@ -79,7 +82,8 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
     interactionCoordinator,
     runtimeReadyTimeoutMs = 5_000,
     runtimeStopTimeoutMs = 2_000,
-    reportError = console.error
+    reportError = console.error,
+    logger
   }: DesktopLifecycleManagerOptions<TWindow>) {
     this.#application = application;
     this.#windowManager = windowManager;
@@ -91,6 +95,7 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
     this.#runtimeReadyTimeoutMs = runtimeReadyTimeoutMs;
     this.#runtimeStopTimeoutMs = runtimeStopTimeoutMs;
     this.#reportError = reportError;
+    this.#logger = logger;
   }
 
   get isQuitting(): boolean {
@@ -100,6 +105,7 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
   async start(): Promise<void> {
     if (this.#started) return;
     this.#started = true;
+    this.#logger?.info("lifecycle.start");
     this.#registerApplicationEvents();
     this.#runtimeCoordinator.register();
     this.#settingsCoordinator?.register();
@@ -107,12 +113,15 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
     await this.#application.whenReady();
     if (this.isQuitting) return;
 
-    this.#trayManager?.create();
+    const trayCreated = this.#trayManager?.create();
+    this.#logger?.info("tray.created", { success: trayCreated ?? false });
     const window = this.#windowManager.createPetWindow();
     await this.#runtimeCoordinator.waitForReady(window, this.#runtimeReadyTimeoutMs);
     try {
       await this.#listenerManager.startAll();
+      this.#logger?.info("listener.started", { count: this.#listenerManager.listeners.length });
     } catch (error) {
+      this.#logger?.error("listener.start.failed", { message: error instanceof Error ? error.message : String(error) });
       this.#reportError("One or more Desktop Listeners failed to start", error);
     }
   }
@@ -121,6 +130,7 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
     if (this.isQuitting) return;
     this.#windowManager.showPetWindow();
     this.#windowManager.focusPetWindow();
+    this.#logger?.info("window.pet.show");
     this.#settingsCoordinator?.notify?.();
     this.#trayManager?.refreshMenu?.();
   }
@@ -128,6 +138,7 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
   hidePet(): void {
     if (this.isQuitting) return;
     this.#windowManager.hidePetWindow();
+    this.#logger?.info("window.pet.hide");
     this.#settingsCoordinator?.notify?.();
     this.#trayManager?.refreshMenu?.();
   }
@@ -135,6 +146,7 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
   showSettings(trigger?: ScreenPoint): void {
     if (this.isQuitting) return;
     this.#windowManager.showSettingsWindow(trigger);
+    this.#logger?.info("window.panel.show");
   }
 
   forwardExternalEvent(event: ExternalEvent): boolean {
@@ -149,6 +161,7 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
   }
 
   async #shutdown(): Promise<void> {
+    this.#logger?.info("lifecycle.shutdown.requested");
     const window = this.#windowManager.getPetWindow();
     try {
       this.#trayManager?.destroy();
@@ -157,6 +170,7 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
     }
     try {
       await this.#listenerManager.destroyAll();
+      this.#logger?.info("listener.stopped", { count: 0 });
     } catch (error) {
       this.#reportError("Unable to destroy all Desktop Listeners", error);
     }
@@ -184,6 +198,7 @@ export class DesktopLifecycleManager<TWindow extends PetWindow> {
     this.#interactionCoordinator?.unregister();
     this.#unregisterApplicationEvents();
     this.#shutdownComplete = true;
+    this.#logger?.info("lifecycle.shutdown.complete");
     this.#application.quit();
   }
 

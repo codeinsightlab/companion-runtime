@@ -23,19 +23,6 @@
     "SUCCESS": 5000
   },
   "idle": {
-    "enabled": true,
-    "timeout": 30000,
-    "idleActions": [
-      {
-        "slot": "IDLE",
-        "event": "IDLE",
-        "weight": 75
-      },
-      {
-        "slot": "THINKING",
-        "event": "TASK_START",
-        "weight": 25
-      }
-    ]
+    "enabled": false
   }
 }

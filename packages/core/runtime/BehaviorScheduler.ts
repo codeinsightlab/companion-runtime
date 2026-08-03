@@ -8,6 +8,7 @@ export class BehaviorScheduler {
   readonly clearTimer: (handle: TimerHandle) => void;
   readonly now: () => number;
   recoverTimer: TimerHandle | undefined;
+  feedbackTimer: TimerHandle | undefined;
   idleTimer: TimerHandle | undefined;
   readonly cooldowns: Map<string, number>;
 
@@ -20,6 +21,7 @@ export class BehaviorScheduler {
     this.clearTimer = clearTimer;
     this.now = now;
     this.recoverTimer = undefined;
+    this.feedbackTimer = undefined;
     this.idleTimer = undefined;
     this.cooldowns = new Map();
   }
@@ -34,6 +36,18 @@ export class BehaviorScheduler {
     if (!this.recoverTimer) return;
     this.clearTimer(this.recoverTimer);
     this.recoverTimer = undefined;
+  }
+
+  scheduleFeedback(duration: number, callback: () => void): void {
+    this.clearFeedback();
+    if (!duration) return;
+    this.feedbackTimer = this.setTimer(callback, duration);
+  }
+
+  clearFeedback(): void {
+    if (!this.feedbackTimer) return;
+    this.clearTimer(this.feedbackTimer);
+    this.feedbackTimer = undefined;
   }
 
   scheduleIdle(timeout: number, callback: () => void): void {
@@ -66,6 +80,7 @@ export class BehaviorScheduler {
 
   stop(): void {
     this.clearRecovery();
+    this.clearFeedback();
     this.clearIdle();
   }
 }

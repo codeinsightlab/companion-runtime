@@ -267,6 +267,19 @@ h2 { margin: 0; font-size: 15px; letter-spacing: -.01em; }
 .developer-panel strong { color: #a1a1aa; font-weight: 600; }
 .developer-panel strong[data-state="running"] { color: #a78bfa; }
 .developer-panel strong[data-state="error"] { color: #fb7185; }
+.event-simulator { grid-column: 1 / -1; padding: 9px 4px 2px; border-top: 1px solid rgb(255 255 255 / 6%); }
+.event-simulator > strong { display: block; margin-bottom: 7px; color: #a1a1aa; font-size: 9px; }
+.developer-panel .event-simulator-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; padding: 0; }
+.event-simulator button {
+  min-height: 27px;
+  border: 1px solid rgb(139 92 246 / 22%);
+  border-radius: 8px;
+  color: #c4b5fd;
+  background: rgb(139 92 246 / 9%);
+  font-size: 8px;
+  cursor: pointer;
+}
+.event-simulator button:hover { background: rgb(139 92 246 / 17%); }
 
 body[data-mode="production"] .developer-control { display: none; }
 

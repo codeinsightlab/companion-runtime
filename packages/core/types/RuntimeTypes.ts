@@ -128,8 +128,32 @@ export interface BehaviorExecutionContext {
   source: BehaviorExecutionSource;
   behaviorSlot: BehaviorSlot;
   triggerName: string;
+  reason?: string;
   startedAt: number;
   queuedAt?: number;
+}
+
+export interface ActiveBehaviorView {
+  readonly behaviorSlot: BehaviorSlot;
+  readonly source: BehaviorExecutionSource;
+  readonly triggerName: string;
+  readonly reason: string;
+  readonly startedAt: number;
+}
+
+export type BehaviorFeedbackLevel = "INFO" | "SUCCESS" | "WARNING" | "ERROR";
+export type BehaviorFeedbackMode = "TEMPORARY" | "PERSISTENT";
+
+export interface BehaviorFeedback {
+  readonly id: string;
+  readonly reason: string;
+  readonly behaviorSlot: BehaviorSlot;
+  readonly source: BehaviorExecutionSource;
+  readonly triggerName: string;
+  readonly level: BehaviorFeedbackLevel;
+  readonly mode: BehaviorFeedbackMode;
+  readonly duration?: number;
+  readonly createdAt: number;
 }
 
 export type BehaviorDispatchStatus =
@@ -228,6 +252,8 @@ export interface PersonalityEngineLike {
 export interface BehaviorSchedulerLike {
   clearRecovery(): void;
   scheduleRecovery(duration: number, callback: () => void): void;
+  clearFeedback(): void;
+  scheduleFeedback(duration: number, callback: () => void): void;
   scheduleIdle(timeout: number, callback: () => void): void;
   markCooldown(key: string | undefined, duration: number): void;
   isCoolingDown(key: string | undefined): boolean;

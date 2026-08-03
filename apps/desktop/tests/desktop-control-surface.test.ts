@@ -17,6 +17,7 @@ import {
 import { SettingsIpcCoordinator } from "../src/settings/SettingsIpcCoordinator.js";
 import type { DesktopRuntimeConfiguration } from "../src/types.js";
 import type { RuntimeIpcCoordinator } from "../src/runtime/RuntimeIpcCoordinator.js";
+import type { ExternalEvent } from "../../../packages/listeners/core/ExternalEvent.js";
 import { TrayManager } from "../src/tray/TrayManager.js";
 import type { TrayHandle } from "../src/tray/TrayManager.js";
 import { WindowManager } from "../src/window/WindowManager.js";
@@ -27,6 +28,7 @@ import {
   calculatePopoverBounds,
   PanelController
 } from "../src/panel/PanelController.js";
+import { BehaviorFeedbackPresenter } from "../src/runtime/BehaviorFeedbackPresenter.js";
 
 class FakeTray implements TrayHandle {
   destroyed = false;
@@ -232,9 +234,112 @@ test("Panel position clamps to display work area and resizes for a short display
 });
 
 test("Settings Panel stylesheet has no modal overlay or desktop backdrop filter", async () => {
-  const stylesheet = await readFile(new URL("../settings.css", import.meta.url), "utf8");
+  const [stylesheet, markup] = await Promise.all([
+    readFile(new URL("../settings.css", import.meta.url), "utf8"),
+    readFile(new URL("../settings.html", import.meta.url), "utf8")
+  ]);
   assert.doesNotMatch(stylesheet, /backdrop-filter\s*:/);
   assert.doesNotMatch(stylesheet, /\.modal-overlay|\.backdrop|\.overlay-mask/);
+  assert.match(stylesheet, /body\[data-mode="production"\] \.developer-control\s*\{\s*display:\s*none;/);
+  assert.equal((markup.match(/data-system-event=/g) ?? []).length, 6);
+});
+
+test("Pet Window contains one non-interactive Behavior reason surface", async () => {
+  const [markup, stylesheet] = await Promise.all([
+    readFile(new URL("../index.html", import.meta.url), "utf8"),
+    readFile(new URL("../desktop.css", import.meta.url), "utf8")
+  ]);
+
+  assert.equal((markup.match(/id="behavior-reason"/g) ?? []).length, 1);
+  assert.match(markup, /aria-live="polite"/);
+  assert.match(stylesheet, /\.behavior-reason\s*\{[\s\S]*?pointer-events:\s*none;/);
+});
+
+test("Behavior Feedback Presenter updates and hides the existing bubble without timing decisions", () => {
+  const bubble = { hidden: true, textContent: "", dataset: {} as Record<string, string> };
+  const reason = { textContent: "" };
+  const slot = { textContent: "" };
+  const source = { textContent: "" };
+  const trigger = { textContent: "" };
+  const internalStatus = { hidden: false, textContent: "RECOVERED: IDLE" };
+  const presenter = new BehaviorFeedbackPresenter({
+    bubble,
+    reason,
+    slot,
+    source,
+    trigger,
+    internalStatus
+  });
+
+  presenter.render({
+    id: "feedback-1",
+    reason: "任务执行成功",
+    behaviorSlot: "SUCCESS",
+    source: "SYSTEM",
+    triggerName: "TASK_SUCCESS",
+    level: "SUCCESS",
+    mode: "TEMPORARY",
+    duration: 3000,
+    createdAt: 1
+  });
+
+  assert.equal(bubble.hidden, false);
+  assert.equal(reason.textContent, "任务执行成功");
+  assert.equal(slot.textContent, "SUCCESS");
+  assert.equal(source.textContent, "SYSTEM");
+  assert.equal(trigger.textContent, "TASK_SUCCESS");
+  assert.deepEqual(bubble.dataset, { level: "SUCCESS", mode: "TEMPORARY" });
+  assert.equal(internalStatus.hidden, true);
+
+  internalStatus.textContent = "RECOVERED: IDLE";
+  assert.equal(reason.textContent, "任务执行成功");
+  assert.equal(bubble.hidden, false);
+
+  presenter.render(undefined);
+  assert.equal(bubble.hidden, true);
+  assert.equal(reason.textContent, "");
+  assert.equal(internalStatus.hidden, false);
+});
+
+test("feedbackchanged uses one Presenter for USER and SYSTEM feedback", () => {
+  const bubble = { hidden: true, textContent: "", dataset: {} as Record<string, string> };
+  const reason = { textContent: "" };
+  const internalStatus = { hidden: false, textContent: "READY: IDLE" };
+  const presenter = new BehaviorFeedbackPresenter({ bubble, reason, internalStatus });
+  const behaviorEngineEvents = new EventTarget();
+  behaviorEngineEvents.addEventListener("feedbackchanged", (event) => {
+    const detail = (event as CustomEvent<{ feedback?: Parameters<typeof presenter.render>[0] }>).detail;
+    presenter.render(detail.feedback);
+  });
+
+  for (const feedback of [
+    {
+      id: "system-feedback",
+      reason: "正在执行任务",
+      behaviorSlot: "EXECUTING" as const,
+      source: "SYSTEM" as const,
+      triggerName: "TASK_RUNNING",
+      level: "INFO" as const,
+      mode: "PERSISTENT" as const,
+      createdAt: 1
+    },
+    {
+      id: "user-feedback",
+      reason: "用户请求庆祝",
+      behaviorSlot: "SUCCESS" as const,
+      source: "USER" as const,
+      triggerName: "CELEBRATE",
+      level: "SUCCESS" as const,
+      mode: "TEMPORARY" as const,
+      duration: 3000,
+      createdAt: 2
+    }
+  ]) {
+    behaviorEngineEvents.dispatchEvent(new CustomEvent("feedbackchanged", { detail: { feedback } }));
+    assert.equal(reason.textContent, feedback.reason);
+    assert.equal(bubble.hidden, false);
+    assert.equal(internalStatus.hidden, true);
+  }
 });
 
 test("DesktopPreferencesStore defaults, persists atomically and survives restart", async () => {
@@ -251,7 +356,7 @@ test("DesktopPreferencesStore defaults, persists atomically and survives restart
     assert.equal((await restarted.load()).petSize, "large");
     assert.deepEqual(restarted.get().petPosition, { x: 120, y: 240, displayId: "7" });
     assert.equal(restarted.get().mouseInteractionMode, "click-through");
-    assert.deepEqual(PET_SIZE_LAYOUT.small, { viewer: 96, windowWidth: 112, windowHeight: 112 });
+    assert.deepEqual(PET_SIZE_LAYOUT.small, { viewer: 96, windowWidth: 148, windowHeight: 164 });
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -355,6 +460,7 @@ test("Settings coordinator validates Character, persists Profile, syncs size and
     await listenerManager.startAll();
     const sent: string[] = [];
     const commands: string[] = [];
+    const externalEvents: ExternalEvent[] = [];
     const sizes: string[] = [];
     const windowManager = {
       getPetWindow: () => undefined,
@@ -373,6 +479,10 @@ test("Settings coordinator validates Character, persists Profile, syncs size and
       sendMouseInteractionModeChanged: () => true,
       sendUserCommand: (_window: BrowserWindow | undefined, command: { name: string }) => {
         commands.push(command.name);
+        return true;
+      },
+      sendExternalEvent: (_window: BrowserWindow | undefined, event: ExternalEvent) => {
+        externalEvents.push(event);
         return true;
       },
       isReady: () => true
@@ -402,7 +512,8 @@ test("Settings coordinator validates Character, persists Profile, syncs size and
       listenerManager,
       windowManager,
       runtimeCoordinator,
-      batteryAvailable: false
+      batteryAvailable: false,
+      mode: "development"
     });
 
     assert.deepEqual(coordinator.snapshot().listeners, {
@@ -428,6 +539,31 @@ test("Settings coordinator validates Character, persists Profile, syncs size and
     assert.throws(() => coordinator.sendUserCommand("DANCE"), /Unknown User Command/);
     coordinator.sendUserCommand("CELEBRATE");
     assert.deepEqual(commands, ["CELEBRATE"]);
+    assert.throws(() => coordinator.simulateSystemEvent("UNKNOWN"), /Unknown Development System Event/);
+    coordinator.simulateSystemEvent("BATTERY_LOW");
+    assert.equal(externalEvents[0]?.source, "system");
+    assert.equal(externalEvents[0]?.name, "battery_low");
+    assert.deepEqual(externalEvents[0]?.payload, {
+      platform: "macos",
+      level: 15,
+      charging: false,
+      simulated: true
+    });
+    const productionCoordinator = new SettingsIpcCoordinator({
+      ipcMain: {} as IpcMain,
+      configuration,
+      preferencesStore,
+      profileStore,
+      listenerManager,
+      windowManager,
+      runtimeCoordinator,
+      batteryAvailable: false,
+      mode: "production"
+    });
+    assert.throws(
+      () => productionCoordinator.simulateSystemEvent("CPU_HIGH"),
+      /only in Development Mode/
+    );
     const reloadedProfile = new DesktopUserProfileStore(join(directory, "profile.json"), {
       id: "default", characterId: "sasuke", behaviorMapping: {}
     });

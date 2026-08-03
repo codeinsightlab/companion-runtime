@@ -1,11 +1,17 @@
 import { BehaviorRule } from "./BehaviorRule.js";
+import {
+  createBehaviorFeedback,
+  resolveBehaviorReason
+} from "./BehaviorReasonResolver.js";
 import { BehaviorScheduler } from "./BehaviorScheduler.js";
 import type { CompanionEvent } from "../events/CompanionEvent.js";
 import type { BehaviorSlot } from "../types/BehaviorSlot.js";
 import type {
   Behavior,
+  ActiveBehaviorView,
   BehaviorExecutionContext,
   BehaviorExecutionSource,
+  BehaviorFeedback,
   BehaviorIgnoreReason,
   BehaviorResolverLike,
   BehaviorResult,
@@ -42,6 +48,7 @@ export class PetBehaviorEngine extends EventTarget {
   readonly #pendingExecutions: PendingBehaviorExecution[] = [];
   #executionSequence = 0;
   #draining = false;
+  #currentFeedback?: BehaviorFeedback;
 
   static async create({
     petManager,
@@ -108,6 +115,8 @@ export class PetBehaviorEngine extends EventTarget {
     this.scheduler.stop();
     this.#activeExecution = undefined;
     this.#pendingExecutions.length = 0;
+    this.#emitActiveBehaviorChanged();
+    this.#clearFeedback();
   }
 
   async handleEvent(event: CompanionEvent): Promise<BehaviorResult> {
@@ -123,7 +132,7 @@ export class PetBehaviorEngine extends EventTarget {
     const slot = this.behaviorResolver.resolve(event);
     const rule = BehaviorRule.fromEvent(eventKey, ruleDefinition, slot, this.rules.priorities);
     const behavior = rule.toBehavior({ ...event.payload });
-    const candidate = this.#candidateFor(eventKey, behavior);
+    const candidate = this.#candidateFor(event, behavior);
     if (candidate.context.source === "USER" && !this.#isTemporary(behavior)) {
       return this.#ignore(candidate, "lifecycle");
     }
@@ -168,6 +177,22 @@ export class PetBehaviorEngine extends EventTarget {
       : undefined;
   }
 
+  get activeBehaviorView(): ActiveBehaviorView | undefined {
+    const execution = this.#activeExecution?.context;
+    if (!execution || execution.behaviorSlot === "IDLE" || !execution.reason) return undefined;
+    return {
+      behaviorSlot: execution.behaviorSlot,
+      source: execution.source,
+      triggerName: execution.triggerName,
+      reason: execution.reason,
+      startedAt: execution.startedAt
+    };
+  }
+
+  get currentFeedback(): BehaviorFeedback | undefined {
+    return this.#currentFeedback ? { ...this.#currentFeedback } : undefined;
+  }
+
   get pendingQueue(): BehaviorExecutionContext[] {
     return this.#pendingExecutions.map(({ context }) => ({ ...context }));
   }
@@ -205,6 +230,7 @@ export class PetBehaviorEngine extends EventTarget {
     sourceBehavior: Behavior,
     execution: ActiveBehaviorExecution
   ): Promise<void> {
+    if (this.#activeExecution !== execution) return;
     const fallbackAction = this.petManager.resolveAction(slot).id;
     const selection = this.#selectPersonalityAction(
       this.petManager.character.id,
@@ -229,6 +255,7 @@ export class PetBehaviorEngine extends EventTarget {
     };
     this.dispatchEvent(new CustomEvent("recovered", { detail: { behavior: this.getCurrentBehavior() } }));
     this.#activeExecution = undefined;
+    this.#emitActiveBehaviorChanged();
     this.#scheduleIdle();
     this.#drainQueue();
   }
@@ -312,16 +339,21 @@ export class PetBehaviorEngine extends EventTarget {
     return this.personalityEngine.selectAction({ characterId, slot, fallbackAction });
   }
 
-  #candidateFor(eventKey: string, behavior: Behavior): PendingBehaviorExecution {
-    const source: BehaviorExecutionSource = eventKey.startsWith("CUSTOM_EVENT:USER_COMMAND:")
+  #candidateFor(event: CompanionEvent, behavior: Behavior): PendingBehaviorExecution {
+    const source: BehaviorExecutionSource = event.type === "CUSTOM_EVENT"
+      && event.name?.startsWith("USER_COMMAND:")
       ? "USER"
       : "SYSTEM";
+    const triggerName = event.type === "CUSTOM_EVENT" && event.name
+      ? event.name.replace(/^USER_COMMAND:/, "")
+      : event.type;
     return {
       behavior,
       context: {
         source,
         behaviorSlot: behavior.slot,
-        triggerName: eventKey,
+        triggerName,
+        reason: resolveBehaviorReason(source, triggerName),
         startedAt: 0,
         queuedAt: Date.now()
       }
@@ -348,6 +380,14 @@ export class PetBehaviorEngine extends EventTarget {
     };
     this.#activeExecution = execution;
     this.currentBehavior = candidate.behavior;
+    this.#emitActiveBehaviorChanged();
+    this.#replaceFeedback(createBehaviorFeedback(
+      execution.id,
+      execution.context.source,
+      execution.context.triggerName,
+      execution.context.behaviorSlot,
+      startedAt
+    ));
     execution.applyPromise = this.#applyBehavior(candidate.behavior);
 
     if (status === "replaced") {
@@ -364,6 +404,8 @@ export class PetBehaviorEngine extends EventTarget {
     } catch (error) {
       if (this.#activeExecution === execution) {
         this.#activeExecution = undefined;
+        this.#emitActiveBehaviorChanged();
+        this.#clearFeedback(`behavior-feedback-${execution.id}`);
         this.#drainQueue();
       }
       throw error;
@@ -416,6 +458,7 @@ export class PetBehaviorEngine extends EventTarget {
     void execution.applyPromise.then(() => {
       if (this.#activeExecution !== execution) return;
       this.#activeExecution = undefined;
+      this.#emitActiveBehaviorChanged();
       this.#drainQueue();
     }).catch((error: unknown) => this.#emitError(error));
   }
@@ -465,5 +508,36 @@ export class PetBehaviorEngine extends EventTarget {
 
   #emitError(error: unknown): void {
     this.dispatchEvent(new CustomEvent("error", { detail: { error } }));
+  }
+
+  #emitActiveBehaviorChanged(): void {
+    this.dispatchEvent(new CustomEvent("activebehaviorchanged", {
+      detail: { activeBehavior: this.activeBehaviorView }
+    }));
+  }
+
+  #replaceFeedback(feedback: BehaviorFeedback | undefined): void {
+    this.scheduler.clearFeedback();
+    this.#currentFeedback = feedback;
+    this.#emitFeedbackChanged();
+    if (feedback?.mode === "TEMPORARY" && feedback.duration) {
+      this.scheduler.scheduleFeedback(feedback.duration, () => {
+        this.#clearFeedback(feedback.id);
+      });
+    }
+  }
+
+  #clearFeedback(expectedId?: string): void {
+    if (expectedId && this.#currentFeedback?.id !== expectedId) return;
+    this.scheduler.clearFeedback();
+    if (!this.#currentFeedback) return;
+    this.#currentFeedback = undefined;
+    this.#emitFeedbackChanged();
+  }
+
+  #emitFeedbackChanged(): void {
+    this.dispatchEvent(new CustomEvent("feedbackchanged", {
+      detail: { feedback: this.currentFeedback }
+    }));
   }
 }

@@ -1,9 +1,12 @@
 {
   "name": "companion-runtime",
-  "version": "1.0.0",
+  "version": "0.1.0-preview",
+  "productName": "Companion",
+  "main": "dist/apps/desktop/src/main.js",
   "private": true,
   "type": "module",
   "description": "Framework for AI application companions with runtime state, behavior, personality, and character packs.",
+  "author": "codeinsightlab",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "node scripts/build.mjs",
@@ -11,7 +14,8 @@
     "demo": "npm run build --silent && python3 -m http.server 4173 --directory dist",
     "desktop:build": "npm --prefix apps/desktop run build",
     "desktop:start": "npm --prefix apps/desktop start",
-    "desktop:start:production": "npm --prefix apps/desktop run start:production"
+    "desktop:start:production": "npm --prefix apps/desktop run start:production",
+    "desktop:package": "npm run build && npm_config_electron_mirror=https://github.com/electron/electron/releases/download/ electron-builder --mac dir"
   },
   "keywords": [
     "companion",
@@ -24,6 +28,20 @@
   "devDependencies": {
     "@types/node": "^22.20.1",
     "electron": "^43.1.1",
+    "electron-builder": "^26.15.3",
     "typescript": "^7.0.2"
+  },
+  "build": {
+    "appId": "io.codeinsightlab.companion",
+    "productName": "Companion",
+    "asar": true,
+    "files": ["dist/**/*", "package.json"],
+    "directories": { "output": "release" },
+    "mac": {
+      "target": ["dir"],
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "identity": null
+    }
   }
 }

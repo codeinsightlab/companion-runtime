@@ -123,6 +123,17 @@
           <div><span>CPU</span><strong data-listener="cpu">读取中</strong></div>
           <div><span>Memory</span><strong data-listener="memory">读取中</strong></div>
           <div><span>Battery</span><strong data-listener="battery">读取中</strong></div>
+          <section class="event-simulator" aria-labelledby="event-simulator-title">
+            <strong id="event-simulator-title">System Event Simulator</strong>
+            <div class="event-simulator-grid">
+              <button type="button" data-system-event="CPU_HIGH">CPU High</button>
+              <button type="button" data-system-event="MEMORY_PRESSURE">Memory</button>
+              <button type="button" data-system-event="BATTERY_LOW">Battery Low</button>
+              <button type="button" data-system-event="TASK_RUNNING">Task Running</button>
+              <button type="button" data-system-event="TASK_SUCCESS">Task Success</button>
+              <button type="button" data-system-event="TASK_ERROR">Task Error</button>
+            </div>
+          </section>
         </div>
       </section>
 

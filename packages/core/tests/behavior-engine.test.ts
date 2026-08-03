@@ -8,6 +8,7 @@ import type { BehaviorSlot } from "../types/BehaviorSlot.js";
 import type { PetAction } from "../types/PetAction.js";
 import type {
   BehaviorRulesConfig,
+  BehaviorSchedulerLike,
   EventMapping,
   PetCharacterLike,
   PetManagerLike
@@ -245,7 +246,7 @@ function userCommand(name: "GREET" | "CELEBRATE" | "REST"): CompanionEvent {
 
 function createOwnershipEngine(
   manager: TestManager,
-  scheduler: BehaviorScheduler
+  scheduler: BehaviorSchedulerLike
 ): PetBehaviorEngine {
   return new PetBehaviorEngine({
     petManager: manager,
@@ -270,7 +271,7 @@ test("USER replaces USER and rapid switching ends at REST", async () => {
   assert.equal(celebrate.status, "replaced");
   assert.equal(rest.status, "replaced");
   assert.equal(engine.currentExecution?.source, "USER");
-  assert.equal(engine.currentExecution?.triggerName, "CUSTOM_EVENT:USER_COMMAND:REST");
+  assert.equal(engine.currentExecution?.triggerName, "REST");
   assert.equal(manager.stateMachine.state, "IDLE");
   assert.equal(engine.pendingQueue.length, 0);
 });
@@ -288,7 +289,7 @@ test("SYSTEM execution protects itself and queues latest USER command", async ()
   assert.equal(latest.status, "queued");
   assert.equal(manager.stateMachine.state, "ERROR");
   assert.equal(engine.pendingQueue.length, 1);
-  assert.equal(engine.pendingQueue[0]?.triggerName, "CUSTOM_EVENT:USER_COMMAND:CELEBRATE");
+  assert.equal(engine.pendingQueue[0]?.triggerName, "CELEBRATE");
 
   await timers.tick(5000);
   assert.equal(manager.stateMachine.state, "SUCCESS");
@@ -307,6 +308,119 @@ test("temporary USER behavior recovers to IDLE", async () => {
   assert.equal(manager.stateMachine.state, "IDLE");
   assert.equal(engine.currentExecution, undefined);
   assert.equal(engine.getCurrentBehavior().recoveredFrom, "CUSTOM_EVENT:USER_COMMAND:CELEBRATE");
+});
+
+test("USER command exposes a factual active Behavior reason", async () => {
+  const engine = createOwnershipEngine(createManager(), createTimerHarness().scheduler);
+
+  await engine.handleEvent(userCommand("CELEBRATE"));
+
+  assert.deepEqual(engine.activeBehaviorView, {
+    behaviorSlot: "SUCCESS",
+    source: "USER",
+    triggerName: "CELEBRATE",
+    reason: "用户请求庆祝",
+    startedAt: engine.currentExecution?.startedAt
+  });
+});
+
+test("SYSTEM reason follows the active execution and replaces long-running task reason", async () => {
+  const engine = createOwnershipEngine(createManager(), createTimerHarness().scheduler);
+
+  await engine.handleEvent(companionEvent("TASK_RUNNING"));
+  assert.equal(engine.activeBehaviorView?.reason, "正在执行任务");
+
+  await engine.handleEvent(companionEvent("TASK_SUCCESS"));
+  for (let index = 0; index < 3; index += 1) await Promise.resolve();
+  assert.equal(engine.activeBehaviorView?.triggerName, "TASK_SUCCESS");
+  assert.equal(engine.activeBehaviorView?.reason, "任务执行成功");
+});
+
+test("Behavior reason ignores pending USER commands behind SYSTEM execution", async () => {
+  const engine = createOwnershipEngine(createManager(), createTimerHarness().scheduler);
+
+  await engine.handleEvent(companionEvent("TASK_RUNNING"));
+  const queued = await engine.handleEvent(userCommand("CELEBRATE"));
+
+  assert.equal(queued.status, "queued");
+  assert.equal(engine.activeBehaviorView?.reason, "正在执行任务");
+  assert.equal(engine.pendingQueue[0]?.reason, "用户请求庆祝");
+  assert.equal(engine.currentFeedback?.reason, "正在执行任务");
+});
+
+test("temporary Feedback uses its own duration instead of USER Behavior duration", async () => {
+  const timers = createTimerHarness();
+  const engine = createOwnershipEngine(createManager(), timers.scheduler);
+
+  await engine.handleEvent(userCommand("GREET"));
+  assert.equal(engine.currentFeedback?.duration, 3000);
+  assert.equal(engine.currentFeedback?.reason, "用户请求打招呼");
+
+  await timers.tick(1200);
+  assert.equal(engine.currentExecution, undefined);
+  assert.equal(engine.currentFeedback?.reason, "用户请求打招呼");
+
+  await timers.tick(1799);
+  assert.ok(engine.currentFeedback);
+  await timers.tick(1);
+  assert.equal(engine.currentFeedback, undefined);
+});
+
+test("SYSTEM warning Feedback covers its configured temporary Behavior window", async () => {
+  const timers = createTimerHarness();
+  const engine = createEngine(createManager(), timers.scheduler);
+
+  await engine.handleEvent(companionEvent("TASK_ERROR"));
+  assert.equal(engine.currentFeedback?.reason, "任务执行异常");
+  assert.equal(engine.currentFeedback?.duration, 5000);
+
+  await timers.tick(4999);
+  assert.equal(engine.currentFeedback?.reason, "任务执行异常");
+  await timers.tick(1);
+  assert.equal(engine.currentFeedback, undefined);
+});
+
+test("persistent Feedback is replaced without an empty handoff event", async () => {
+  const engine = createOwnershipEngine(createManager(), createTimerHarness().scheduler);
+  const feedback: Array<string | undefined> = [];
+  engine.addEventListener("feedbackchanged", (event) => {
+    const detail = (event as CustomEvent<{ feedback?: { reason: string } }>).detail;
+    feedback.push(detail.feedback?.reason);
+  });
+
+  await engine.handleEvent(companionEvent("TASK_RUNNING"));
+  assert.equal(engine.currentFeedback?.mode, "PERSISTENT");
+  await engine.handleEvent(companionEvent("TASK_SUCCESS"));
+  for (let index = 0; index < 3; index += 1) await Promise.resolve();
+
+  assert.deepEqual(feedback, ["正在执行任务", "任务执行成功"]);
+  assert.equal(engine.currentFeedback?.mode, "TEMPORARY");
+});
+
+test("stale recovery cannot mutate a replacement execution", async () => {
+  let staleRecovery: (() => void) | undefined;
+  const scheduler: BehaviorSchedulerLike = {
+    clearRecovery: () => undefined,
+    scheduleRecovery: (_duration, callback) => { staleRecovery = callback; },
+    clearFeedback: () => undefined,
+    scheduleFeedback: () => undefined,
+    scheduleIdle: () => undefined,
+    markCooldown: () => undefined,
+    isCoolingDown: () => false,
+    stop: () => undefined
+  };
+  const manager = createManager();
+  const engine = createOwnershipEngine(manager, scheduler);
+
+  await engine.handleEvent(userCommand("CELEBRATE"));
+  const obsoleteRecovery = staleRecovery;
+  await engine.handleEvent(userCommand("GREET"));
+  obsoleteRecovery?.();
+  for (let index = 0; index < 3; index += 1) await Promise.resolve();
+
+  assert.equal(engine.currentExecution?.triggerName, "GREET");
+  assert.equal(manager.stateMachine.state, "THINKING");
+  assert.equal(engine.currentFeedback?.reason, "用户请求打招呼");
 });
 
 test("idle scheduler resolves a configured Event to a Behavior Slot and stops cleanly", async () => {
